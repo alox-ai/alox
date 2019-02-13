@@ -1,0 +1,7 @@
+[package]
+name = "alox"
+version = "0.1.0"
+authors = ["Jadon Fowler <j@jadon.io>"]
+edition = "2018"
+
+[dependencies]
