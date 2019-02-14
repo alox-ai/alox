@@ -1,6 +1,16 @@
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Path(pub Vec<String>);
+
+impl Path {
+    pub fn of(s: &str) -> Path {
+        Path(vec![s.to_string()])
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Program {
     pub file_name: String,
+    pub imports: Vec<Path>,
     pub nodes: Vec<Node>,
 }
 
@@ -24,7 +34,7 @@ pub enum Expression {
 pub enum Statement {
     VariableDeclaration(Box<VariableDeclaration>),
     Return(Box<Return>),
-    FunctionCall(Box<FunctionCall>)
+    FunctionCall(Box<FunctionCall>),
 }
 
 // -- NODES -- \\
@@ -76,9 +86,26 @@ pub struct Return { pub expression: Expression }
 #[derive(Clone, Debug)]
 pub struct IntegerLiteral(pub i64);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct VariableReference {
+    pub path: Option<Path>,
     pub name: String,
+}
+
+impl VariableReference {
+    pub fn from_str(name: &str) -> VariableReference {
+        VariableReference {
+            path: None,
+            name: name.to_string(),
+        }
+    }
+
+    pub fn from_string(name: String) -> VariableReference {
+        VariableReference {
+            path: None,
+            name,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

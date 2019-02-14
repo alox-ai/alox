@@ -1,15 +1,44 @@
+use std::sync::{Arc, Mutex};
+
+use chashmap::CHashMap;
+
+use crate::ast;
+use crate::ir::types::Type;
+
 pub mod convert;
 pub mod types;
 
-use crate::ir::types::Type;
-use std::sync::{Arc, Mutex};
+pub struct Compiler {
+    pub modules: Vec<Module>,
+    pub resolutions_needed: CHashMap<(ast::Path, String, DeclarationKind), Arc<Mutex<Option<Declaration>>>>,
+}
+
+impl Compiler {
+    pub fn new() -> Compiler {
+        Compiler {
+            modules: Vec::with_capacity(5),
+            resolutions_needed: CHashMap::new(),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Module {
     pub name: String,
-    pub function_headers: Vec<FunctionHeader>,
-    pub functions: Vec<Function>,
-    // todo: structs, traits,
+    pub declarations: Vec<Arc<Declaration>>,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq, Hash)]
+pub enum DeclarationKind {
+    FunctionHeader,
+    Function,
+}
+
+#[derive(Clone, Debug)]
+pub enum Declaration {
+    FunctionHeader(Box<FunctionHeader>),
+    Function(Box<Function>),
+    // todo: structs, traits, variables
 }
 
 #[derive(Clone, Debug)]
@@ -29,7 +58,8 @@ pub struct FunctionHeader {
 
 #[derive(Clone, Debug)]
 pub struct Function {
-    pub header: FunctionHeader,
+    // assuming this Declaration is a FunctionHeader
+    pub header: Arc<Mutex<Option<Arc<Declaration>>>>,
     pub blocks: Vec<Arc<Mutex<Block>>>,
 }
 
@@ -40,11 +70,18 @@ pub struct Block {
 
 #[derive(Clone, Debug)]
 pub enum Instruction {
+    DeclarationReference(Box<DeclarationReference>),
     RegisterAssignment(Box<RegisterAssignment>),
     FunctionCall(Box<FunctionCall>),
 }
 
 // -- INSTRUCTIONS -- \\
+
+#[derive(Clone, Debug)]
+pub struct DeclarationReference {
+    pub name: (ast::Path, String),
+    pub declaration: Arc<Mutex<Option<Declaration>>>,
+}
 
 #[derive(Clone, Debug)]
 pub struct RegisterAssignment {

@@ -1,21 +1,27 @@
+extern crate chashmap;
+
+use std::sync::Arc;
+use std::thread;
+
 mod ast;
 mod ir;
 
 fn main() {
-    let mut program = ast::Program {
-        file_name: "bounded.alox".to_string(),
+    let mut add_program = ast::Program {
+        file_name: "add".to_string(),
+        imports: vec![],
         nodes: vec![],
     };
 
     // let INT32_MAX: Int32 = 2_147_483_647
-    program.nodes.push(ast::Node::VariableDeclaration(Box::new(ast::VariableDeclaration {
+    add_program.nodes.push(ast::Node::VariableDeclaration(Box::new(ast::VariableDeclaration {
         name: "INT32_MAX".to_string(),
         type_name: Some("Int32".to_string()),
         initial_expression: Some(ast::Expression::IntegerLiteral(Box::new(ast::IntegerLiteral(2_147_483_647)))),
     })));
 
     // fun bounded(n: Int32): Bool
-    program.nodes.push(ast::Node::FunctionDeclaration(Box::new(ast::FunctionDeclaration {
+    add_program.nodes.push(ast::Node::FunctionDeclaration(Box::new(ast::FunctionDeclaration {
         name: "bounded".to_string(),
         arguments: vec![("n".to_string(), "Int32".to_string())],
         return_type: "Bool".to_string(),
@@ -26,31 +32,31 @@ fn main() {
     // let bounded = (n) -> {
     //     return (addWithOverflow(n, INT32_MAX) > 0) && (n < INT32_MAX)
     // }
-    program.nodes.push(ast::Node::FunctionDefinition(Box::new(ast::FunctionDefinition {
+    add_program.nodes.push(ast::Node::FunctionDefinition(Box::new(ast::FunctionDefinition {
         name: "bounded".to_string(),
         arguments: vec![("n".to_string(), None)],
         statements: vec![
             ast::Statement::Return(Box::new(ast::Return {
                 expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "&&".to_string() })),
+                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("&&"))),
                     arguments: vec![
                         ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                            function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: ">".to_string() })),
+                            function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str(">"))),
                             arguments: vec![
                                 ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "addWithOverflow".to_string() })),
+                                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("addWithOverflow"))),
                                     arguments: vec![
-                                        ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "n".to_string() })),
-                                        ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "INT32_MAX".to_string() })),
+                                        ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("n"))),
+                                        ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("INT32_MAX"))),
                                     ],
                                 })),
                             ],
                         })),
                         ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                            function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "<".to_string() })),
+                            function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("<"))),
                             arguments: vec![
-                                ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "n".to_string() })),
-                                ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "INT32_MAX".to_string() })),
+                                ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("n"))),
+                                ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("INT32_MAX"))),
                             ],
                         }))
                     ],
@@ -61,7 +67,7 @@ fn main() {
 
     // fun add(x: Int32, y: Int32): Int32
     //    where (y: bounded(x + y), return: x + y)
-    program.nodes.push(ast::Node::FunctionDeclaration(Box::new(ast::FunctionDeclaration {
+    add_program.nodes.push(ast::Node::FunctionDeclaration(Box::new(ast::FunctionDeclaration {
         name: "add".to_string(),
         arguments: vec![
             ("x".to_string(), "Int32".to_string()),
@@ -70,22 +76,22 @@ fn main() {
         return_type: "Int32".to_string(),
         refinements: vec![
             ("y".to_string(), ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "bounded".to_string() })),
+                function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("bounded"))),
                 arguments: vec![
                     ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                        function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "+".to_string() })),
+                        function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("+"))),
                         arguments: vec![
-                            ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "x".to_string() })),
-                            ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "y".to_string() })),
+                            ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("x"))),
+                            ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("y"))),
                         ],
                     }))
                 ],
             }))),
             ("return".to_string(), ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "+".to_string() })),
+                function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("+"))),
                 arguments: vec![
-                    ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "x".to_string() })),
-                    ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "y".to_string() })),
+                    ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("x"))),
+                    ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("y"))),
                 ],
             })))
         ],
@@ -95,7 +101,7 @@ fn main() {
     // let add = (a, b) -> {
     //     return a + b
     // }
-    program.nodes.push(ast::Node::FunctionDefinition(Box::new(ast::FunctionDefinition {
+    add_program.nodes.push(ast::Node::FunctionDefinition(Box::new(ast::FunctionDefinition {
         name: "add".to_string(),
         arguments: vec![
             ("a".to_string(), None),
@@ -104,18 +110,25 @@ fn main() {
         statements: vec![
             ast::Statement::Return(Box::new(ast::Return {
                 expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "add".to_string() })),
+                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("add"))),
                     arguments: vec![
-                        ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "a".to_string() })),
-                        ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "b".to_string() })),
+                        ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("a"))),
+                        ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("b"))),
                     ],
                 }))
             }))
         ],
     })));
 
+
+    let mut main_program = ast::Program {
+        file_name: "main".to_string(),
+        imports: vec![ast::Path::of("add")],
+        nodes: vec![],
+    };
+
     // fun main() +IO
-    program.nodes.push(ast::Node::FunctionDeclaration(Box::new(ast::FunctionDeclaration {
+    main_program.nodes.push(ast::Node::FunctionDeclaration(Box::new(ast::FunctionDeclaration {
         name: "main".to_string(),
         arguments: vec![],
         return_type: "Void".to_string(),
@@ -130,7 +143,7 @@ fn main() {
     //     let c = add(a, b)
     //     println(c)
     // }
-    program.nodes.push(ast::Node::FunctionDefinition(Box::new(ast::FunctionDefinition {
+    main_program.nodes.push(ast::Node::FunctionDefinition(Box::new(ast::FunctionDefinition {
         name: "main".to_string(),
         arguments: vec![],
         statements: vec![
@@ -138,10 +151,10 @@ fn main() {
                 name: "a".to_string(),
                 type_name: None,
                 initial_expression: Some(ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "-".to_string() })),
+                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("-"))),
                     arguments: vec![
-                        ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "INT32_MAX".to_string() })),
-                        ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "2".to_string() })),
+                        ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("INT32_MAX"))),
+                        ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("2"))),
                     ],
                 }))),
             })),
@@ -154,22 +167,37 @@ fn main() {
                 name: "c".to_string(),
                 type_name: None,
                 initial_expression: Some(ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "add".to_string() })),
+                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference {
+                        path: Some(ast::Path::of("add")),
+                        name: "add".to_string(),
+                    })),
                     arguments: vec![
-                        ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "a".to_string() })),
-                        ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "b".to_string() })),
+                        ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("a"))),
+                        ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("b"))),
                     ],
                 }))),
             })),
             ast::Statement::FunctionCall(Box::new(ast::FunctionCall {
-                function: ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "println".to_string() })),
+                function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("println"))),
                 arguments: vec![
-                    ast::Expression::VariableReference(Box::new(ast::VariableReference { name: "c".to_string() }))
+                    ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("c")))
                 ],
             }))
         ],
     })));
 
-    let module = ir::convert::generate_ir(dbg!(program));
-    dbg!(module);
+    let compiler = Arc::new(ir::Compiler::new());
+
+    // simulate thread pool
+    let handle = thread::spawn({
+        let compiler_copy = compiler.clone();
+        move || {
+            let module = compiler_copy.generate_ir(dbg!(main_program));
+            dbg!(module);
+        }
+    });
+
+    thread::sleep(std::time::Duration::from_secs(1));
+    dbg!(compiler.generate_ir(dbg!(add_program)));
+    handle.join();
 }
