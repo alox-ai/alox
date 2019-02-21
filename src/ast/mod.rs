@@ -2,13 +2,19 @@
 pub struct Path(pub Vec<String>);
 
 impl Path {
-    pub fn of(s: &str) -> Path {
-        Path(vec![s.to_string()])
+    pub fn of(s: &str) -> Self {
+        Self(vec![s.to_string()])
+    }
+    pub fn append(&self, s: String) -> Self {
+        let mut vec = self.0.clone();
+        vec.push(s);
+        Self(vec)
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Program {
+    pub path: Path,
     pub file_name: String,
     pub imports: Vec<Path>,
     pub nodes: Vec<Node>,
@@ -56,8 +62,8 @@ pub struct Struct {
 #[derive(Clone, Debug)]
 pub struct FunctionDeclaration {
     pub name: String,
-    pub arguments: Vec<(String, String)>,
-    pub return_type: String,
+    pub arguments: Vec<(String, (Path, String))>,
+    pub return_type: (Path, String),
     pub refinements: Vec<(String, Expression)>,
     pub permissions: Vec<String>,
 }
@@ -96,6 +102,13 @@ impl VariableReference {
     pub fn from_str(name: &str) -> VariableReference {
         VariableReference {
             path: None,
+            name: name.to_string(),
+        }
+    }
+
+    pub fn from_str_with_path(name: &str, path: Path) -> VariableReference {
+        VariableReference {
+            path: Some(path),
             name: name.to_string(),
         }
     }

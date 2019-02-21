@@ -8,6 +8,7 @@ mod ir;
 
 fn main() {
     let mut add_program = ast::Program {
+        path: ast::Path::of("test"),
         file_name: "add".to_string(),
         imports: vec![],
         nodes: vec![],
@@ -23,8 +24,8 @@ fn main() {
     // fun bounded(n: Int32): Bool
     add_program.nodes.push(ast::Node::FunctionDeclaration(Box::new(ast::FunctionDeclaration {
         name: "bounded".to_string(),
-        arguments: vec![("n".to_string(), "Int32".to_string())],
-        return_type: "Bool".to_string(),
+        arguments: vec![("n".to_string(), (ast::Path(vec![]), "Int32".to_string()))],
+        return_type: (ast::Path(vec![]), "Bool".to_string()),
         refinements: vec![],
         permissions: vec![],
     })));
@@ -70,10 +71,10 @@ fn main() {
     add_program.nodes.push(ast::Node::FunctionDeclaration(Box::new(ast::FunctionDeclaration {
         name: "add".to_string(),
         arguments: vec![
-            ("x".to_string(), "Int32".to_string()),
-            ("y".to_string(), "Int32".to_string())
+            ("x".to_string(), (ast::Path(vec![]), "Int32".to_string())),
+            ("y".to_string(), (ast::Path(vec![]), "Int32".to_string()))
         ],
-        return_type: "Int32".to_string(),
+        return_type: (ast::Path(vec![]), "Int32".to_string()),
         refinements: vec![
             ("y".to_string(), ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
                 function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("bounded"))),
@@ -122,6 +123,7 @@ fn main() {
 
 
     let mut main_program = ast::Program {
+        path: ast::Path::of("test"),
         file_name: "main".to_string(),
         imports: vec![ast::Path::of("add")],
         nodes: vec![],
@@ -131,7 +133,7 @@ fn main() {
     main_program.nodes.push(ast::Node::FunctionDeclaration(Box::new(ast::FunctionDeclaration {
         name: "main".to_string(),
         arguments: vec![],
-        return_type: "Void".to_string(),
+        return_type: (ast::Path(vec![]), "Void".to_string()),
         refinements: vec![],
         permissions: vec!["IO".to_string()],
     })));
@@ -192,12 +194,15 @@ fn main() {
     let handle = thread::spawn({
         let compiler_copy = compiler.clone();
         move || {
-            let module = compiler_copy.generate_ir(dbg!(main_program));
+            let module = compiler_copy.generate_ir(main_program);
             dbg!(module);
         }
     });
 
     thread::sleep(std::time::Duration::from_secs(1));
-    dbg!(compiler.generate_ir(dbg!(add_program)));
+    dbg!(compiler.generate_ir(add_program));
     handle.join();
+    for x in compiler.resolutions_needed.clone().into_iter() {
+        dbg!(x);
+    }
 }
