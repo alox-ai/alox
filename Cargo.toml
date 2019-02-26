@@ -5,4 +5,3 @@ authors = ["Jadon Fowler <j@jadon.io>"]
 edition = "2018"
 
 [dependencies]
-chashmap = "2.2.0"

@@ -1,6 +1,5 @@
-use std::sync::{Arc, Mutex};
-
-use chashmap::CHashMap;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::ast;
 use crate::ir::types::Type;
@@ -12,20 +11,36 @@ pub mod types;
 type DeclarationWrapper = Arc<Mutex<Option<Arc<Declaration>>>>;
 
 pub struct Compiler {
-    pub modules: Vec<Module>,
-    pub resolutions_needed: CHashMap<(ast::Path, String, DeclarationKind), DeclarationWrapper>,
+    pub modules: RwLock<Vec<Module>>,
+    pub resolutions_needed: RwLock<HashMap<(ast::Path, String, DeclarationKind), DeclarationWrapper>>,
 }
 
 impl Compiler {
     pub fn new() -> Compiler {
         Compiler {
-            modules: Vec::with_capacity(5),
-            resolutions_needed: CHashMap::new(),
+            modules: RwLock::new(Vec::with_capacity(5)),
+            resolutions_needed: RwLock::new(HashMap::new()),
         }
     }
 
+    pub fn add_module(&self, module: Module) {
+        // update references that are waiting for this module
+        let path = module.path.clone().append(module.name.clone());
+        let resolutions = self.resolutions_needed.read().unwrap();
+        for needed_resolution in resolutions.keys() {
+            if needed_resolution.0 == path {
+                let declaration = module.resolve(needed_resolution.1.clone(), needed_resolution.2);
+                if let Some(reference) = resolutions.get(needed_resolution) {
+                    let mut data = reference.lock().unwrap();
+                    *data = declaration;
+                }
+            }
+        }
+        self.modules.write().unwrap().push(module);
+    }
+
     pub fn resolve(&self, path: ast::Path, name: String, kind: DeclarationKind) -> DeclarationWrapper {
-        for module in self.modules.iter() {
+        for module in self.modules.read().unwrap().iter() {
             if module.full_path() == path {
                 println!("found module {:?}", path);
                 let declaration = module.resolve(name, kind);
@@ -33,7 +48,7 @@ impl Compiler {
             }
         }
         let declaration: DeclarationWrapper = Arc::new(Mutex::new(None));
-        self.resolutions_needed.insert((path, name, kind), declaration.clone());
+        self.resolutions_needed.write().unwrap().insert((path, name, kind), declaration.clone());
         declaration
     }
 }
@@ -61,7 +76,7 @@ impl Module {
     }
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq, Hash)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialOrd, PartialEq, Hash)]
 pub enum DeclarationKind {
     FunctionHeader,
     Function,

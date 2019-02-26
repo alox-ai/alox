@@ -1,5 +1,3 @@
-extern crate chashmap;
-
 use std::sync::Arc;
 use std::thread;
 
@@ -194,15 +192,17 @@ fn main() {
     let handle = thread::spawn({
         let compiler_copy = compiler.clone();
         move || {
-            let module = compiler_copy.generate_ir(main_program);
-            dbg!(module);
+            let module = compiler_copy.generate_ir(add_program);
+            compiler_copy.add_module(dbg!(module));
         }
     });
 
     thread::sleep(std::time::Duration::from_secs(1));
-    dbg!(compiler.generate_ir(add_program));
+    compiler.add_module(dbg!(compiler.generate_ir(main_program)));
     handle.join();
-    for x in compiler.resolutions_needed.clone().into_iter() {
-        dbg!(x);
+    let resolutions = compiler.resolutions_needed.read().unwrap();
+    for needed_resolution in resolutions.keys() {
+        let r = resolutions.get(needed_resolution).unwrap();
+        dbg!(needed_resolution);
     }
 }

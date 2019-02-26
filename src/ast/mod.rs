@@ -106,7 +106,7 @@ impl VariableReference {
         }
     }
 
-    pub fn from_str_with_path(name: &str, path: Path) -> VariableReference {
+    pub fn from_str_with_path(path: Path, name: &str) -> VariableReference {
         VariableReference {
             path: Some(path),
             name: name.to_string(),
