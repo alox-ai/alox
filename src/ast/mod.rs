@@ -55,6 +55,7 @@ pub struct Trait {
 pub struct Struct {
     pub name: String,
     pub traits: Vec<String>,
+    pub fields: Vec<VariableDeclaration>,
     pub function_declarations: Vec<FunctionDeclaration>,
     pub function_definitions: Vec<FunctionDefinition>,
 }

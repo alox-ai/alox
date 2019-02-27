@@ -10,6 +10,11 @@ pub mod types;
 // Thread safe reference to a mutable option of a thread safe reference to a declaration
 type DeclarationWrapper = Arc<Mutex<Option<Arc<Declaration>>>>;
 
+pub fn wrap_declaration(declaration: Declaration) -> DeclarationWrapper {
+    Arc::new(Mutex::new(Some(Arc::new(declaration))))
+}
+
+
 pub struct Compiler {
     pub modules: RwLock<Vec<Module>>,
     pub resolutions_needed: RwLock<HashMap<(ast::Path, String, DeclarationKind), DeclarationWrapper>>,
@@ -68,7 +73,7 @@ impl Module {
 
     pub fn resolve(&self, name: String, kind: DeclarationKind) -> Option<Arc<Declaration>> {
         for declaration in self.declarations.iter() {
-            if declaration.declaration_kind() == kind && declaration.name() == name {
+            if declaration.is_declaration_kind(kind) && declaration.name() == name {
                 return Some(declaration.clone());
             }
         }
@@ -118,13 +123,30 @@ impl Declaration {
             Declaration::Type(_) => DeclarationKind::Type,
         }
     }
+
+    pub fn is_declaration_kind(&self, kind: DeclarationKind) -> bool {
+        let this = self.declaration_kind();
+        if this == kind { return true; }
+        if kind == DeclarationKind::Type
+            && (this == DeclarationKind::Struct
+            || this == DeclarationKind::Trait) {
+            return true;
+        }
+        false
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Struct {
     pub name: String,
-    pub traits: Arc<Mutex<Vec<Trait>>>,
-    pub functions: Vec<Function>,
+    // Declaration::Variable
+    pub fields: Arc<RwLock<Vec<DeclarationWrapper>>>,
+    // Declaration::Trait
+    pub traits: Arc<RwLock<Vec<DeclarationWrapper>>>,
+    // Declaration::FunctionHeader
+    pub function_headers: Arc<RwLock<Vec<DeclarationWrapper>>>,
+    // Declaration::Function
+    pub functions: Arc<RwLock<Vec<DeclarationWrapper>>>,
 }
 
 #[derive(Clone, Debug)]
