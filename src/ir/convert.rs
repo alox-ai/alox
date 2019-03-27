@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex, RwLock};
 use crate::ast;
 use crate::ast::FunctionDeclaration;
 use crate::ir;
-use crate::ir::types::Type;
 
 impl ir::Compiler {
     pub fn generate_ir(&self, program: ast::Program) -> ir::Module {
@@ -19,19 +18,46 @@ impl ir::Compiler {
                 ast::Node::Struct(s) => {
                     let mut fields = Vec::with_capacity(s.fields.len());
                     let mut traits = Vec::with_capacity(s.traits.len());
-                    let mut function_headers = Vec::with_capacity(s.function_declarations.len());
+                    let mut function_headers_unwrapped = Vec::with_capacity(s.function_declarations.len());
                     let mut functions = Vec::with_capacity(s.function_definitions.len());
 
                     for f in s.function_declarations {
                         let function_header = self.generate_ir_function_header(&f);
-                        function_headers.push(ir::wrap_declaration(function_header));
+                        function_headers_unwrapped.push(Arc::new(function_header));
                     }
 
                     for f in s.function_definitions {
-                        // todo: declarations doesn't have the function header needed because it's in function_headers above
-                        let function = self.generate_ir_function_definition(&declarations, &f);
+                        let mut header: Option<Arc<ir::Declaration>> = None;
+                        for declaration in function_headers_unwrapped.iter() {
+                            match *declaration.clone() {
+                                ir::Declaration::FunctionHeader(ref f) => {
+                                    if f.name == name {
+                                        header = Some(declaration.clone());
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        if let None = header {
+                            for declaration in declarations.iter() {
+                                match *declaration.clone() {
+                                    ir::Declaration::FunctionHeader(ref f) => {
+                                        if f.name == name {
+                                            header = Some(declaration.clone());
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                        let function = self.generate_ir_function_definition(&declarations, &f, header);
                         functions.push(ir::wrap_declaration(function));
                     }
+
+                    // wrap headers
+                    let function_headers: Vec<ir::DeclarationWrapper> = function_headers_unwrapped.iter_mut()
+                        .map(|f| Arc::new(Mutex::new(Some((*f).clone()))))
+                        .collect();
 
                     let strct = ir::Struct {
                         name: s.name,
@@ -40,6 +66,7 @@ impl ir::Compiler {
                         function_headers: Arc::new(RwLock::new(function_headers)),
                         functions: Arc::new(RwLock::new(functions)),
                     };
+                    declarations.push(Arc::new(ir::Declaration::Struct(Box::new(strct))));
                 }
                 ast::Node::Trait(t) => {}
 
@@ -48,7 +75,19 @@ impl ir::Compiler {
                     declarations.push(Arc::new(function_header));
                 }
                 ast::Node::FunctionDefinition(f) => {
-                    let function = self.generate_ir_function_definition(&declarations, f.as_ref());
+                    let mut header: Option<Arc<ir::Declaration>> = None;
+                    for declaration in declarations.iter() {
+                        match *declaration.clone() {
+                            ir::Declaration::FunctionHeader(ref f) => {
+                                if f.name == name {
+                                    header = Some(declaration.clone());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    let function = self.generate_ir_function_definition(&declarations, f.as_ref(), header);
                     declarations.push(Arc::new(function));
                 }
                 ast::Node::VariableDeclaration(v) => {}
@@ -81,25 +120,32 @@ impl ir::Compiler {
         }))
     }
 
-    pub fn generate_ir_function_definition(&self, declarations: &Vec<Arc<ir::Declaration>>, f: &ast::FunctionDefinition) -> ir::Declaration {
+    pub fn generate_ir_function_definition(&self, declarations: &Vec<Arc<ir::Declaration>>, f: &ast::FunctionDefinition, header: Option<Arc<ir::Declaration>>) -> ir::Declaration {
         let name = f.name.clone();
-        let blocks: Vec<Arc<Mutex<ir::Block>>> = vec![];
+        let mut blocks: Vec<ir::Block> = vec![];
+        let mut current_block: ir::Block = ir::Block::new();
 
-        let mut header = None;
-        for declaration in declarations.iter() {
-            match *declaration.clone() {
-                ir::Declaration::FunctionHeader(ref f) => {
-                    if f.name == name {
-                        header = Some(declaration.clone());
-                    }
+        // TODO: instructions
+        for statement in f.statements.iter() {
+            match statement {
+                ast::Statement::Return(ret) => {
+                    // ir::Instruction::Return(Box::new(ir::))
+                    blocks.push(current_block);
+                    current_block = ir::Block::new();
                 }
                 _ => {}
             }
         }
+
+        let mut blocks_wrapped = Vec::with_capacity(blocks.len());
+        for b in blocks {
+            blocks_wrapped.push(Arc::new(Mutex::new(b)));
+        }
+
         ir::Declaration::Function(Box::new(ir::Function {
             name,
             header: Arc::new(Mutex::new(header)),
-            blocks,
+            blocks: blocks_wrapped,
         }))
     }
 }

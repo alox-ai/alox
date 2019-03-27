@@ -189,6 +189,14 @@ pub struct Block {
     pub instructions: Vec<Instruction>
 }
 
+impl Block {
+    pub fn new() -> Block {
+        Block {
+            instructions: Vec::with_capacity(5)
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Instruction {
     DeclarationReference(Box<DeclarationReference>),

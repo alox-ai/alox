@@ -1,17 +1,39 @@
 # alox prototype
 
-Ideas
+> Systems Programming meets Verified Programming
+
+This is very much a _Work In Progress_, nothing works yet.
+
+Here's a roadmap:
+
+* AST to IR conversion
+    * [x] AST Structure
+    * [x] Thread-safe IR Structure
+    * [x] Concurrent IR Symbol Resolution
+    * [ ] AST Expression -> IR Instruction conversion
+    * [ ] Passes to validate things
+* Lexer & Parser
+    * [ ] Start parsing needed files immediately
+* Error messages
+* Backends
+    * [ ] Look at CraneLift
+    * [ ] LLVM
+* Really dig into semantics
+---
+
+Language Ideas
 
 * Pure code by default
     * Allows for compile time code execution
     * Permission based system - `+IO, +Syscall, +MutateArgs`
 * Strong type system
     * Algebraic Data Types
-    * Refinement Types
+    * **Refinement Types**
+    * Unique & Borrowed Types
 * Automatic Versioning
     * Enforce public APIs
 * Clean syntax
-* Concurrent compiler pipeline
+* **Concurrent compiler pipeline**
 
 ```rust
 let INT32_MAX: Int32 = 2_147_483_647
@@ -73,4 +95,8 @@ let main = () -> {
 }
 ```
 
-Inspired by _Rust, Liquid Haskell, Kitten, & many more_.
+```rust
+
+```
+
+Inspired by _Rust, Liquid Haskell, & many more_.
