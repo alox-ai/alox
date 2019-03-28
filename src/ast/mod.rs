@@ -36,6 +36,16 @@ pub enum Expression {
     FunctionCall(Box<FunctionCall>),
 }
 
+impl Expression {
+    pub fn name(&self) -> String {
+        match self {
+            Expression::IntegerLiteral(_) => "IntegerLiteral",
+            Expression::VariableReference(_) => "VariableReference",
+            Expression::FunctionCall(_) => "FunctionCall"
+        }.to_string()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Statement {
     VariableDeclaration(Box<VariableDeclaration>),
@@ -80,7 +90,7 @@ pub struct FunctionDefinition {
 pub struct VariableDeclaration {
     pub name: String,
     pub type_name: Option<String>,
-    pub initial_expression: Option<Expression>,
+    pub initial_expression: Expression,
 }
 
 // -- STATEMENTS -- \\

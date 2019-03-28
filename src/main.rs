@@ -16,7 +16,7 @@ fn main() {
     add_program.nodes.push(ast::Node::VariableDeclaration(Box::new(ast::VariableDeclaration {
         name: "INT32_MAX".to_string(),
         type_name: Some("Int32".to_string()),
-        initial_expression: Some(ast::Expression::IntegerLiteral(Box::new(ast::IntegerLiteral(2_147_483_647)))),
+        initial_expression: ast::Expression::IntegerLiteral(Box::new(ast::IntegerLiteral(2_147_483_647))),
     })));
 
     // fun bounded(n: Int32): Bool
@@ -150,23 +150,23 @@ fn main() {
             ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
                 name: "a".to_string(),
                 type_name: None,
-                initial_expression: Some(ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
+                initial_expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
                     function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("-"))),
                     arguments: vec![
                         ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("INT32_MAX"))),
-                        ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("2"))),
+                        ast::Expression::IntegerLiteral(Box::new(ast::IntegerLiteral(2))),
                     ],
-                }))),
+                })),
             })),
             ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
                 name: "b".to_string(),
                 type_name: None,
-                initial_expression: Some(ast::Expression::IntegerLiteral(Box::new(ast::IntegerLiteral(3)))),
+                initial_expression: ast::Expression::IntegerLiteral(Box::new(ast::IntegerLiteral(3))),
             })),
             ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
                 name: "c".to_string(),
                 type_name: None,
-                initial_expression: Some(ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
+                initial_expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
                     function: ast::Expression::VariableReference(Box::new(ast::VariableReference {
                         path: Some(ast::Path::of("add")),
                         name: "add".to_string(),
@@ -175,7 +175,7 @@ fn main() {
                         ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("a"))),
                         ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("b"))),
                     ],
-                }))),
+                })),
             })),
             ast::Statement::FunctionCall(Box::new(ast::FunctionCall {
                 function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("println"))),
@@ -193,16 +193,16 @@ fn main() {
         let compiler_copy = compiler.clone();
         move || {
             let module = compiler_copy.generate_ir(add_program);
-            compiler_copy.add_module(dbg!(module));
+            compiler_copy.add_module(module);
         }
     });
 
     thread::sleep(std::time::Duration::from_secs(1));
     compiler.add_module(dbg!(compiler.generate_ir(main_program)));
     handle.join();
-    let resolutions = compiler.resolutions_needed.read().unwrap();
-    for needed_resolution in resolutions.keys() {
-        let r = resolutions.get(needed_resolution).unwrap();
-        dbg!(needed_resolution);
-    }
+//    let resolutions = compiler.resolutions_needed.read().unwrap();
+//    for needed_resolution in resolutions.keys() {
+//        let r = resolutions.get(needed_resolution).unwrap();
+//        dbg!(needed_resolution);
+//    }
 }

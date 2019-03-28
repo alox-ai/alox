@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
 
 use crate::ast;
@@ -186,7 +187,7 @@ pub struct Function {
 
 #[derive(Clone, Debug)]
 pub struct Block {
-    pub instructions: Vec<Instruction>
+    pub instructions: Vec<Arc<Mutex<Instruction>>>
 }
 
 impl Block {
@@ -195,12 +196,17 @@ impl Block {
             instructions: Vec::with_capacity(5)
         }
     }
+
+    pub fn add_instruction(&mut self, instruction: Arc<Mutex<Instruction>>) {
+        self.instructions.push(instruction);
+    }
 }
 
 #[derive(Clone, Debug)]
 pub enum Instruction {
+    Unreachable(String),
+    IntegerLiteral(Box<IntegerLiteral>),
     DeclarationReference(Box<DeclarationReference>),
-    RegisterAssignment(Box<RegisterAssignment>),
     FunctionCall(Box<FunctionCall>),
     Return(Box<Return>),
     Branch(Box<Branch>),
@@ -209,15 +215,21 @@ pub enum Instruction {
 // -- INSTRUCTIONS -- \\
 
 #[derive(Clone, Debug)]
+pub struct IntegerLiteral(pub i64);
+
+#[derive(Clone, Debug)]
 pub struct DeclarationReference {
     pub name: (ast::Path, String),
     pub declaration: DeclarationWrapper,
 }
 
-#[derive(Clone, Debug)]
-pub struct RegisterAssignment {
-    pub name: String,
-    pub instruction: Arc<Mutex<Instruction>>,
+impl DeclarationReference {
+    pub fn blank(path: ast::Path, name: String) -> Self {
+        Self {
+            name: (path, name),
+            declaration: Arc::new(Mutex::new(None)),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
