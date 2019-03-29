@@ -78,11 +78,16 @@ impl Printer {
         match *instruction {
             Instruction::DeclarationReference(ref d) => {
                 let (path, name) = &d.name;
-                if let Some(path) = path {
-                    self.print(format!("%{} = @{}::{}", id, path.to_string(), name))
-                } else {
-                    self.print(format!("%{} = @::{}", id, name))
-                }
+                let path_name = match path {
+                    Some(path) => path.to_string(),
+                    None => "".to_string()
+                };
+                let filled = match *(d.declaration.lock().unwrap()) {
+                    None => "*",
+                    Some(_) => ""
+                };
+
+                self.print(format!("%{} = @{}::{}{}", id, path_name, name, filled))
             }
             Instruction::IntegerLiteral(ref i) => {
                 self.print(format!("%{} = {}", id, i.as_ref().0))

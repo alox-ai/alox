@@ -3,7 +3,6 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
 
 use crate::ast;
-use crate::ast::FunctionDeclaration;
 use crate::ir;
 
 impl ir::Compiler {
@@ -107,10 +106,10 @@ impl ir::Compiler {
         let name = f.name.clone();
         let mut arguments: Vec<(String, ir::DeclarationWrapper)> = Vec::with_capacity(f.arguments.len());
         for (name, type_path) in f.arguments.iter() {
-            let typ = self.resolve(type_path.0.clone(), type_path.1.clone(), ir::DeclarationKind::Type);
+            let typ = self.resolve(type_path.0.clone(), type_path.1.clone(), Some(ir::DeclarationKind::Type));
             arguments.push((name.clone(), typ));
         }
-        let return_type = self.resolve(f.return_type.0.clone(), f.return_type.1.clone(), ir::DeclarationKind::Type);
+        let return_type = self.resolve(f.return_type.0.clone(), f.return_type.1.clone(), Some(ir::DeclarationKind::Type));
         let refinements = vec![];
         let permissions = vec![];
         ir::Declaration::FunctionHeader(Box::new(ir::FunctionHeader {
@@ -150,11 +149,11 @@ impl ir::Compiler {
     pub fn generate_ir_statement(&self, lvt: &mut LocalVariableTable, block_builder: &mut BlockBuilder, statement: &ast::Statement) {
         match statement {
             ast::Statement::VariableDeclaration(d) => {
-                let expr_ins = self.generate_ir_expression(lvt, block_builder.current_block(), &d.initial_expression);
+                let expr_ins = self.generate_ir_expression(lvt, block_builder.current_block(), &d.initial_expression, None);
                 lvt.set(d.name.clone(), expr_ins);
             }
             ast::Statement::Return(r) => {
-                let expr_ins = self.generate_ir_expression(lvt, block_builder.current_block(), &r.expression);
+                let expr_ins = self.generate_ir_expression(lvt, block_builder.current_block(), &r.expression, None);
                 let return_ins = Arc::new(Mutex::new(ir::Instruction::Return(Box::new(ir::Return { instruction: expr_ins }))));
                 block_builder.add_instruction(return_ins);
                 block_builder.create_block();
@@ -163,17 +162,17 @@ impl ir::Compiler {
         }
     }
 
-    pub fn generate_ir_expression(&self, lvt: &mut LocalVariableTable, block: &mut ir::Block, expression: &ast::Expression) -> Arc<Mutex<ir::Instruction>> {
+    pub fn generate_ir_expression(&self, lvt: &mut LocalVariableTable, block: &mut ir::Block, expression: &ast::Expression, declaration_context: Option<ir::DeclarationKind>) -> Arc<Mutex<ir::Instruction>> {
         let ins = match expression {
             ast::Expression::IntegerLiteral(i) => {
                 let ins = Arc::new(Mutex::new(ir::Instruction::IntegerLiteral(Box::new(ir::IntegerLiteral(i.as_ref().0)))));
                 ins
             }
             ast::Expression::FunctionCall(call) => {
-                let function = self.generate_ir_expression(lvt, block, &call.function);
+                let function = self.generate_ir_expression(lvt, block, &call.function, Some(ir::DeclarationKind::FunctionHeader));
                 let mut arguments = Vec::with_capacity(call.arguments.len());
                 for argument in call.arguments.iter() {
-                    let argument_ins = self.generate_ir_expression(lvt, block, argument);
+                    let argument_ins = self.generate_ir_expression(lvt, block, argument, None);
                     arguments.push(argument_ins);
                 }
                 Arc::new(Mutex::new(ir::Instruction::FunctionCall(Box::new(ir::FunctionCall {
@@ -185,10 +184,16 @@ impl ir::Compiler {
                 let name = r.name.clone();
                 if let Some(path) = &r.path {
                     // this is a declaration to something in a module
-                    Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference::blank_with_path(path.clone(), name)))))
+                    let declaration = self.resolve(path.clone(), name.clone(), None);
+
+                    Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference {
+                        name: (Some(path.clone()), name),
+                        declaration,
+                    }))))
                 } else {
-                    // this is a local variable
+                    // assume the symbol is in the module
                     if let Some(ins) = lvt.get(name.clone()) {
+                        // this is a local variable
                         ins
                     } else {
                         Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference::blank(name)))))

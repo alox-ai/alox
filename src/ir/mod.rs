@@ -19,7 +19,7 @@ pub fn wrap_declaration(declaration: Declaration) -> DeclarationWrapper {
 
 pub struct Compiler {
     pub modules: RwLock<Vec<Module>>,
-    pub resolutions_needed: RwLock<HashMap<(ast::Path, String, DeclarationKind), DeclarationWrapper>>,
+    pub resolutions_needed: RwLock<HashMap<(ast::Path, String, Option<DeclarationKind>), Vec<DeclarationWrapper>>>,
 }
 
 impl Compiler {
@@ -34,30 +34,46 @@ impl Compiler {
         // update references that are waiting for this module
         let path = module.path.clone().append(module.name.clone());
         let resolutions = self.resolutions_needed.read().unwrap();
+        // go through each needed resolution
         for needed_resolution in resolutions.keys() {
+            // this needs the module we are adding
             if needed_resolution.0 == path {
-                let declaration = module.resolve(needed_resolution.1.clone(), needed_resolution.2);
-                if let Some(reference) = resolutions.get(needed_resolution) {
-                    let mut data = reference.lock().unwrap();
-                    *data = declaration;
+                if let Some(references) = resolutions.get(needed_resolution) {
+                    // fill it in
+                    let declaration = module.resolve(needed_resolution.1.clone(), needed_resolution.2);
+                    for reference in references.iter() {
+                        let mut data = reference.lock().unwrap();
+                        *data = declaration.clone();
+                    }
                 }
             }
         }
-        let mut printer = Printer::new();
-        printer.print_module(&module);
         self.modules.write().unwrap().push(module);
     }
 
-    pub fn resolve(&self, path: ast::Path, name: String, kind: DeclarationKind) -> DeclarationWrapper {
+    pub fn resolve(&self, path: ast::Path, name: String, kind: Option<DeclarationKind>) -> DeclarationWrapper {
         for module in self.modules.read().unwrap().iter() {
             if module.full_path() == path {
-                println!("found module {:?}", path);
                 let declaration = module.resolve(name, kind);
                 return Arc::new(Mutex::new(declaration));
             }
         }
         let declaration: DeclarationWrapper = Arc::new(Mutex::new(None));
-        self.resolutions_needed.write().unwrap().insert((path, name, kind), declaration.clone());
+        let key = (path, name, kind);
+
+        // does this key already have resolutions pending?
+        let has_vec = match self.resolutions_needed.read().unwrap().get(&key) {
+            Some(_) => true,
+            _ => false
+        };
+        if has_vec {
+            // use the existing Vec
+            self.resolutions_needed.write().unwrap().get_mut(&key).unwrap().push(declaration.clone());
+        } else {
+            // create a new one with our empty declaration and insert it
+            let decs: Vec<DeclarationWrapper> = vec![declaration.clone()];
+            self.resolutions_needed.write().unwrap().insert(key, decs);
+        }
         declaration
     }
 }
@@ -75,10 +91,18 @@ impl Module {
         self.path.append(self.name.clone())
     }
 
-    pub fn resolve(&self, name: String, kind: DeclarationKind) -> Option<Arc<Declaration>> {
-        for declaration in self.declarations.iter() {
-            if declaration.is_declaration_kind(kind) && declaration.name() == name {
-                return Some(declaration.clone());
+    pub fn resolve(&self, name: String, kind: Option<DeclarationKind>) -> Option<Arc<Declaration>> {
+        if let Some(kind) = kind {
+            for declaration in self.declarations.iter() {
+                if declaration.is_declaration_kind(kind) && declaration.name() == name {
+                    return Some(declaration.clone());
+                }
+            }
+        } else {
+            for declaration in self.declarations.iter() {
+                if declaration.name() == name {
+                    return Some(declaration.clone());
+                }
             }
         }
         None

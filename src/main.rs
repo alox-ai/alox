@@ -123,7 +123,7 @@ fn main() {
     let mut main_program = ast::Program {
         path: ast::Path::of("test"),
         file_name: "main".to_string(),
-        imports: vec![ast::Path::of("add")],
+        imports: vec![ast::Path(vec!["test".to_string(), "add".to_string()])],
         nodes: vec![],
     };
 
@@ -168,7 +168,7 @@ fn main() {
                 type_name: None,
                 initial_expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
                     function: ast::Expression::VariableReference(Box::new(ast::VariableReference {
-                        path: Some(ast::Path::of("add")),
+                        path: Some(ast::Path(vec!["test".to_string(), "add".to_string()])),
                         name: "add".to_string(),
                     })),
                     arguments: vec![
@@ -197,12 +197,18 @@ fn main() {
         }
     });
 
-//    thread::sleep(std::time::Duration::from_secs(1));
+    thread::sleep(std::time::Duration::from_secs(1));
     compiler.add_module(compiler.generate_ir(main_program));
     handle.join().unwrap();
-//    let resolutions = compiler.resolutions_needed.read().unwrap();
-//    for needed_resolution in resolutions.keys() {
-//        let r = resolutions.get(needed_resolution).unwrap();
-//        dbg!(needed_resolution);
-//    }
+
+    let mut printer = ir::debug::Printer::new();
+    for module in compiler.modules.read().unwrap().iter() {
+        printer.print_module(module);
+    }
+
+    let resolutions = compiler.resolutions_needed.read().unwrap();
+    for needed_resolution in resolutions.keys() {
+        let r = resolutions.get(needed_resolution).unwrap();
+        dbg!(needed_resolution);
+    }
 }
