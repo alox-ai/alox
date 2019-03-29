@@ -5,10 +5,15 @@ impl Path {
     pub fn of(s: &str) -> Self {
         Self(vec![s.to_string()])
     }
+
     pub fn append(&self, s: String) -> Self {
         let mut vec = self.0.clone();
         vec.push(s);
         Self(vec)
+    }
+
+    pub fn to_string(&self) -> String {
+        self.0.join("::")
     }
 }
 

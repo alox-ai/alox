@@ -3,10 +3,12 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
 
 use crate::ast;
+use crate::ir::debug::Printer;
 use crate::ir::types::Type;
 
 pub mod convert;
 pub mod types;
+pub mod debug;
 
 // Thread safe reference to a mutable option of a thread safe reference to a declaration
 type DeclarationWrapper = Arc<Mutex<Option<Arc<Declaration>>>>;
@@ -14,7 +16,6 @@ type DeclarationWrapper = Arc<Mutex<Option<Arc<Declaration>>>>;
 pub fn wrap_declaration(declaration: Declaration) -> DeclarationWrapper {
     Arc::new(Mutex::new(Some(Arc::new(declaration))))
 }
-
 
 pub struct Compiler {
     pub modules: RwLock<Vec<Module>>,
@@ -42,6 +43,8 @@ impl Compiler {
                 }
             }
         }
+        let mut printer = Printer::new();
+        printer.print_module(&module);
         self.modules.write().unwrap().push(module);
     }
 
@@ -219,14 +222,21 @@ pub struct IntegerLiteral(pub i64);
 
 #[derive(Clone, Debug)]
 pub struct DeclarationReference {
-    pub name: (ast::Path, String),
+    pub name: (Option<ast::Path>, String),
     pub declaration: DeclarationWrapper,
 }
 
 impl DeclarationReference {
-    pub fn blank(path: ast::Path, name: String) -> Self {
+    pub fn blank_with_path(path: ast::Path, name: String) -> Self {
         Self {
-            name: (path, name),
+            name: (Some(path), name),
+            declaration: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn blank(name: String) -> Self {
+        Self {
+            name: (None, name),
             declaration: Arc::new(Mutex::new(None)),
         }
     }

@@ -130,12 +130,14 @@ impl ir::Compiler {
         for statement in f.statements.iter() {
             self.generate_ir_statement(&mut lvt, &mut block_builder, statement);
         }
-        dbg!(lvt);
 
         let blocks = block_builder.blocks;
         let mut blocks_wrapped = Vec::with_capacity(blocks.len());
         for b in blocks {
-            blocks_wrapped.push(Arc::new(Mutex::new(b)));
+            // this might come back to bite me
+            if b.instructions.len() > 0 {
+                blocks_wrapped.push(Arc::new(Mutex::new(b)));
+            }
         }
 
         ir::Declaration::Function(Box::new(ir::Function {
@@ -183,14 +185,15 @@ impl ir::Compiler {
                 let name = r.name.clone();
                 if let Some(path) = &r.path {
                     // this is a declaration to something in a module
-                    Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference::blank(path.clone(), name)))))
+                    Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference::blank_with_path(path.clone(), name)))))
                 } else {
                     // this is a local variable
                     if let Some(ins) = lvt.get(name.clone()) {
                         ins
                     } else {
-                        let debug = format!("VariableReference({})", name);
-                        Arc::new(Mutex::new(ir::Instruction::Unreachable(debug)))
+                        Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference::blank(name)))))
+//                        let debug = format!("VariableReference({})", name);
+//                        Arc::new(Mutex::new(ir::Instruction::Unreachable(debug)))
                     }
                 }
             }

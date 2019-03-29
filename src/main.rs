@@ -197,9 +197,9 @@ fn main() {
         }
     });
 
-    thread::sleep(std::time::Duration::from_secs(1));
-    compiler.add_module(dbg!(compiler.generate_ir(main_program)));
-    handle.join();
+//    thread::sleep(std::time::Duration::from_secs(1));
+    compiler.add_module(compiler.generate_ir(main_program));
+    handle.join().unwrap();
 //    let resolutions = compiler.resolutions_needed.read().unwrap();
 //    for needed_resolution in resolutions.keys() {
 //        let r = resolutions.get(needed_resolution).unwrap();
