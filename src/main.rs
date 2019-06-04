@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::thread;
+use std::time::Instant;
 
 mod ast;
 mod ir;
@@ -192,13 +193,17 @@ fn main() {
     let handle = thread::spawn({
         let compiler_copy = compiler.clone();
         move || {
+//            thread::sleep(std::time::Duration::from_secs(1));
+            let now = Instant::now();
             let module = compiler_copy.generate_ir(add_program);
+            println!("Add Module: {:?}", now.elapsed());
             compiler_copy.add_module(module);
         }
     });
 
-    thread::sleep(std::time::Duration::from_secs(1));
+    let now = Instant::now();
     compiler.add_module(compiler.generate_ir(main_program));
+    println!("Main Module: {:?}", now.elapsed());
     handle.join().unwrap();
 
     let mut printer = ir::debug::Printer::new();
@@ -206,9 +211,8 @@ fn main() {
         printer.print_module(module);
     }
 
-    let resolutions = compiler.resolutions_needed.read().unwrap();
-    for needed_resolution in resolutions.keys() {
-        let r = resolutions.get(needed_resolution).unwrap();
-        dbg!(needed_resolution);
-    }
+//    let resolutions = compiler.resolutions_needed.read().unwrap();
+//    for needed_resolution in resolutions.iter() {
+//        dbg!(needed_resolution);
+//    }
 }

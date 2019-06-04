@@ -103,7 +103,17 @@ pub struct VariableDeclaration {
 #[derive(Clone, Debug)]
 pub struct Return { pub expression: Expression }
 
+#[derive(Clone, Debug)]
+pub struct IfStatement {
+    pub condition: Expression,
+    pub block: Vec<Statement>,
+    pub elseif: Option<Box<IfStatement>>,
+}
+
 // -- EXPRESSIONS -- \\
+
+#[derive(Clone, Debug)]
+pub struct BooleanLiteral(pub bool);
 
 #[derive(Clone, Debug)]
 pub struct IntegerLiteral(pub i64);

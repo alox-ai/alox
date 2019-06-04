@@ -39,6 +39,9 @@ impl Printer {
 
     pub fn print_declaration(&mut self, dec: &Arc<Declaration>) {
         match **dec {
+            Declaration::FunctionHeader(ref header) => {
+                self.print_function_header(header);
+            }
             Declaration::Function(ref function) => {
                 self.print_function(function);
             }
@@ -46,8 +49,31 @@ impl Printer {
         }
     }
 
+    pub fn print_function_header(&mut self, header: &Box<FunctionHeader>) {
+        let mut args = Vec::with_capacity(header.arguments.len());
+        for (arg, dec) in &header.arguments {
+            args.push(arg);
+        }
+        self.print(format!("fun @{}({:?}):", header.name, args));
+        self.push();
+        self.print(format!("perms: {:?}", header.permissions));
+
+        for (name, blocks) in header.refinements.iter() {
+            self.print(format!("refinement {}:", name));
+            let mut id = 0;
+            self.push();
+            for block in blocks {
+                self.print_block(id, block);
+                id += 1;
+            }
+            self.pop();
+        }
+
+        self.pop();
+    }
+
     pub fn print_function(&mut self, function: &Box<Function>) {
-        self.print(format!("def @{}:", function.name));
+        self.print(format!("let @{}:", function.name));
 
         let mut id = 0;
         self.push();

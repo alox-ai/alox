@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::Instant;
 
 use crate::ast;
 use crate::ir;
@@ -23,11 +24,14 @@ impl ir::Compiler {
                     let mut functions = Vec::with_capacity(s.function_definitions.len());
 
                     for f in s.function_declarations {
+                        let now = Instant::now();
                         let function_header = self.generate_ir_function_header(&f);
                         function_headers_unwrapped.push(Arc::new(function_header));
+                        println!("convert function_declaration: {} {:?}", f.name, now.elapsed());
                     }
 
                     for f in s.function_definitions {
+                        let now = Instant::now();
                         let mut header: Option<Arc<ir::Declaration>> = None;
                         for declaration in function_headers_unwrapped.iter() {
                             match *declaration.clone() {
@@ -53,6 +57,7 @@ impl ir::Compiler {
                         }
                         let function = self.generate_ir_function_definition(&declarations, &f, header);
                         functions.push(ir::wrap_declaration(function));
+                        println!("convert function_definition: {} {:?}", f.name, now.elapsed());
                     }
 
                     // wrap headers
@@ -72,10 +77,13 @@ impl ir::Compiler {
                 ast::Node::Trait(t) => {}
 
                 ast::Node::FunctionDeclaration(mut f) => {
+                    let now = Instant::now();
                     let function_header = self.generate_ir_function_header(f.as_ref());
                     declarations.push(Arc::new(function_header));
+                    println!("convert function_declaration: {} {:?}", f.name, now.elapsed());
                 }
                 ast::Node::FunctionDefinition(f) => {
+                    let now = Instant::now();
                     let mut header: Option<Arc<ir::Declaration>> = None;
                     for declaration in declarations.iter() {
                         match *declaration.clone() {
@@ -90,6 +98,7 @@ impl ir::Compiler {
 
                     let function = self.generate_ir_function_definition(&declarations, f.as_ref(), header);
                     declarations.push(Arc::new(function));
+                    println!("convert function_definition: {} {:?}", f.name, now.elapsed());
                 }
                 ast::Node::VariableDeclaration(v) => {}
             }
@@ -110,7 +119,17 @@ impl ir::Compiler {
             arguments.push((name.clone(), typ));
         }
         let return_type = self.resolve(f.return_type.0.clone(), f.return_type.1.clone(), Some(ir::DeclarationKind::Type));
-        let refinements = vec![];
+        let mut refinements = vec![];
+        for (name, expression) in &f.refinements {
+            let mut block_builder = BlockBuilder::new();
+            let mut lvt = LocalVariableTable::new();
+            self.generate_ir_expression(&mut lvt, block_builder.current_block(), &expression, None);
+            let mut blocks = Vec::with_capacity(block_builder.blocks.len());
+            for block in block_builder.blocks {
+                blocks.push(Arc::new(Mutex::new(block)));
+            }
+            refinements.push((name.clone(), blocks));
+        }
         let permissions = vec![];
         ir::Declaration::FunctionHeader(Box::new(ir::FunctionHeader {
             name,
@@ -184,7 +203,7 @@ impl ir::Compiler {
                 let name = r.name.clone();
                 if let Some(path) = &r.path {
                     // this is a declaration to something in a module
-                    let declaration = self.resolve(path.clone(), name.clone(), None);
+                    let declaration = self.resolve(path.clone(), name.clone(), declaration_context);
 
                     Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference {
                         name: (Some(path.clone()), name),

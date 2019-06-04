@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{Display, Error, Formatter};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -19,14 +20,14 @@ pub fn wrap_declaration(declaration: Declaration) -> DeclarationWrapper {
 
 pub struct Compiler {
     pub modules: RwLock<Vec<Module>>,
-    pub resolutions_needed: RwLock<HashMap<(ast::Path, String, Option<DeclarationKind>), Vec<DeclarationWrapper>>>,
+    pub resolutions_needed: RwLock<Vec<(ast::Path, String, Option<DeclarationKind>, DeclarationWrapper)>>,
 }
 
 impl Compiler {
     pub fn new() -> Compiler {
         Compiler {
             modules: RwLock::new(Vec::with_capacity(5)),
-            resolutions_needed: RwLock::new(HashMap::new()),
+            resolutions_needed: RwLock::new(Vec::with_capacity(20)),
         }
     }
 
@@ -34,19 +35,25 @@ impl Compiler {
         // update references that are waiting for this module
         let path = module.path.clone().append(module.name.clone());
         let resolutions = self.resolutions_needed.read().unwrap();
+        let mut completed_resolutions = Vec::with_capacity(5);
+
         // go through each needed resolution
-        for needed_resolution in resolutions.keys() {
+        for (i, needed_resolution) in resolutions.iter().enumerate() {
             // this needs the module we are adding
             if needed_resolution.0 == path {
-                if let Some(references) = resolutions.get(needed_resolution) {
-                    // fill it in
-                    let declaration = module.resolve(needed_resolution.1.clone(), needed_resolution.2);
-                    for reference in references.iter() {
-                        let mut data = reference.lock().unwrap();
-                        *data = declaration.clone();
-                    }
-                }
+                let mut data = needed_resolution.3.lock().unwrap();
+                let declaration = module.resolve(needed_resolution.1.clone(), needed_resolution.2);
+                *data = declaration.clone();
+                // mark this resolution as completed
+                completed_resolutions.push(i);
             }
+        }
+        drop(resolutions);
+
+        // remove completed resolutions from the list
+        let mut writer = self.resolutions_needed.write().unwrap();
+        for index in completed_resolutions {
+            writer.swap_remove(index);
         }
         self.modules.write().unwrap().push(module);
     }
@@ -54,26 +61,14 @@ impl Compiler {
     pub fn resolve(&self, path: ast::Path, name: String, kind: Option<DeclarationKind>) -> DeclarationWrapper {
         for module in self.modules.read().unwrap().iter() {
             if module.full_path() == path {
-                let declaration = module.resolve(name, kind);
+                let declaration = module.resolve(name.clone(), kind);
                 return Arc::new(Mutex::new(declaration));
             }
         }
         let declaration: DeclarationWrapper = Arc::new(Mutex::new(None));
-        let key = (path, name, kind);
+        let key = (path, name.clone(), kind, declaration.clone());
 
-        // does this key already have resolutions pending?
-        let has_vec = match self.resolutions_needed.read().unwrap().get(&key) {
-            Some(_) => true,
-            _ => false
-        };
-        if has_vec {
-            // use the existing Vec
-            self.resolutions_needed.write().unwrap().get_mut(&key).unwrap().push(declaration.clone());
-        } else {
-            // create a new one with our empty declaration and insert it
-            let decs: Vec<DeclarationWrapper> = vec![declaration.clone()];
-            self.resolutions_needed.write().unwrap().insert(key, decs);
-        }
+        self.resolutions_needed.write().unwrap().push(key);
         declaration
     }
 }
@@ -194,13 +189,19 @@ pub struct Permission {
     pub carries: bool,
 }
 
+impl Display for Permission {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "+{}{}", self.name, if self.carries { "^" } else { "" })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct FunctionHeader {
     pub name: String,
     // assuming declarations are types
     pub arguments: Vec<(String, DeclarationWrapper)>,
     pub return_type: DeclarationWrapper,
-    pub refinements: Vec<(String, Block)>,
+    pub refinements: Vec<(String, Vec<Arc<Mutex<Block>>>)>,
     pub permissions: Vec<Permission>,
 }
 
