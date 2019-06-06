@@ -50,21 +50,23 @@ impl Printer {
     }
 
     pub fn print_function_header(&mut self, header: &Box<FunctionHeader>) {
-        let mut args = Vec::with_capacity(header.arguments.len());
-        for (arg, dec) in &header.arguments {
-            args.push(arg);
+        let mut joined_args = "".to_string();
+        for (id, (arg, _)) in (&header.arguments).iter().enumerate() {
+            joined_args.push_str(&format!("%{}", arg));
+            if id < header.arguments.len() - 1 {
+                joined_args.push_str(", ");
+            }
         }
-        self.print(format!("fun @{}({:?}):", header.name, args));
+
+        self.print(format!("fun @{}({}):", header.name, joined_args));
         self.push();
         self.print(format!("perms: {:?}", header.permissions));
 
         for (name, blocks) in header.refinements.iter() {
-            self.print(format!("refinement {}:", name));
-            let mut id = 0;
+            self.print(format!("refinement %{}:", name));
             self.push();
-            for block in blocks {
+            for (id, block) in blocks.iter().enumerate() {
                 self.print_block(id, block);
-                id += 1;
             }
             self.pop();
         }
@@ -73,13 +75,19 @@ impl Printer {
     }
 
     pub fn print_function(&mut self, function: &Box<Function>) {
-        self.print(format!("let @{}:", function.name));
+        let mut joined_args = "".to_string();
+        for (id, arg) in (&function.arguments).iter().enumerate() {
+            joined_args.push_str(&format!("%{}", arg));
+            if id < function.arguments.len() - 1 {
+                joined_args.push_str(", ");
+            }
+        }
 
-        let mut id = 0;
+        self.print(format!("let @{}({}):", function.name, joined_args));
+
         self.push();
-        for block in function.blocks.iter() {
+        for (id, block) in function.blocks.iter().enumerate() {
             self.print_block(id, block);
-            id += 1;
         }
         self.pop();
     }
@@ -88,13 +96,11 @@ impl Printer {
         let mut block = block.lock().unwrap();
         self.print(format!("block#{}:", id));
 
-        let mut id = 0;
         self.push();
         let mut map: HashMap<*const Mutex<Instruction>, usize> = HashMap::new();
-        for instruction in block.instructions.iter() {
+        for (id, instruction) in block.instructions.iter().enumerate() {
             map.insert(instruction.as_ref() as *const Mutex<Instruction>, id);
             self.print_instruction(&map, id, instruction);
-            id += 1;
         }
         self.pop();
     }
@@ -138,6 +144,9 @@ impl Printer {
                 let value_id = if let Some(id) = map.get(&value) { *id } else { 77777 };
 
                 self.print(format!("ret %{}", value_id))
+            }
+            Instruction::GetParameter(ref param) => {
+                self.print(format!("%{} = param %{}", id, param.name))
             }
             _ => {
                 self.print(format!("%{} = unprintable", id))

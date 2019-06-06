@@ -76,7 +76,7 @@ impl ir::Compiler {
                 }
                 ast::Node::Trait(t) => {}
 
-                ast::Node::FunctionDeclaration(mut f) => {
+                ast::Node::FunctionDeclaration(f) => {
                     let now = Instant::now();
                     let function_header = self.generate_ir_function_header(f.as_ref());
                     declarations.push(Arc::new(function_header));
@@ -119,17 +119,29 @@ impl ir::Compiler {
             arguments.push((name.clone(), typ));
         }
         let return_type = self.resolve(f.return_type.0.clone(), f.return_type.1.clone(), Some(ir::DeclarationKind::Type));
+
+        // generate blocks for refinements
         let mut refinements = vec![];
         for (name, expression) in &f.refinements {
             let mut block_builder = BlockBuilder::new();
-            let mut lvt = LocalVariableTable::new();
-            self.generate_ir_expression(&mut lvt, block_builder.current_block(), &expression, None);
+            let mut params = vec![];
+            for (name, typ) in &f.arguments {
+                params.push(name.clone());
+            }
+            let mut lvt = LocalVariableTable::new_with_params(params);
+            let expr_ins = self.generate_ir_expression(&mut lvt, block_builder.current_block(), &expression, None);
+
+            // return the final expression instruction at the end of the block
+            let ret_ins = Arc::new(Mutex::new(ir::Instruction::Return(Box::new(ir::Return { instruction: expr_ins }))));
+            block_builder.add_instruction(ret_ins);
+
             let mut blocks = Vec::with_capacity(block_builder.blocks.len());
             for block in block_builder.blocks {
                 blocks.push(Arc::new(Mutex::new(block)));
             }
             refinements.push((name.clone(), blocks));
         }
+
         let permissions = vec![];
         ir::Declaration::FunctionHeader(Box::new(ir::FunctionHeader {
             name,
@@ -142,8 +154,15 @@ impl ir::Compiler {
 
     pub fn generate_ir_function_definition(&self, declarations: &Vec<Arc<ir::Declaration>>, f: &ast::FunctionDefinition, header: Option<Arc<ir::Declaration>>) -> ir::Declaration {
         let name = f.name.clone();
+
+        // get the parameters from the function header
+        let mut param_names = vec![];
+        for (name, dec) in &f.arguments {
+            param_names.push(name.clone());
+        }
+
         let mut block_builder = BlockBuilder::new();
-        let mut lvt = LocalVariableTable::new();
+        let mut lvt = LocalVariableTable::new_with_params(param_names);
 
         for statement in f.statements.iter() {
             self.generate_ir_statement(&mut lvt, &mut block_builder, statement);
@@ -158,8 +177,14 @@ impl ir::Compiler {
             }
         }
 
+        let mut arguments = vec![];
+        for (arg, _) in &f.arguments {
+            arguments.push(arg.clone());
+        }
+
         ir::Declaration::Function(Box::new(ir::Function {
             name,
+            arguments,
             header: Arc::new(Mutex::new(header)),
             blocks: blocks_wrapped,
         }))
@@ -177,6 +202,19 @@ impl ir::Compiler {
                 block_builder.add_instruction(return_ins);
                 block_builder.create_block();
             }
+            ast::Statement::FunctionCall(call) => {
+                let function = self.generate_ir_expression(lvt, block_builder.current_block(), &call.function, Some(ir::DeclarationKind::FunctionHeader));
+                let mut arguments = Vec::with_capacity(call.arguments.len());
+                for argument in call.arguments.iter() {
+                    let argument_ins = self.generate_ir_expression(lvt, block_builder.current_block(), argument, None);
+                    arguments.push(argument_ins);
+                }
+                let call_ins = Arc::new(Mutex::new(ir::Instruction::FunctionCall(Box::new(ir::FunctionCall {
+                    function,
+                    arguments,
+                }))));
+                block_builder.add_instruction(call_ins);
+            }
             _ => {}
         }
     }
@@ -184,8 +222,7 @@ impl ir::Compiler {
     pub fn generate_ir_expression(&self, lvt: &mut LocalVariableTable, block: &mut ir::Block, expression: &ast::Expression, declaration_context: Option<ir::DeclarationKind>) -> Arc<Mutex<ir::Instruction>> {
         let ins = match expression {
             ast::Expression::IntegerLiteral(i) => {
-                let ins = Arc::new(Mutex::new(ir::Instruction::IntegerLiteral(Box::new(ir::IntegerLiteral(i.as_ref().0)))));
-                ins
+                Arc::new(Mutex::new(ir::Instruction::IntegerLiteral(Box::new(ir::IntegerLiteral(i.as_ref().0)))))
             }
             ast::Expression::FunctionCall(call) => {
                 let function = self.generate_ir_expression(lvt, block, &call.function, Some(ir::DeclarationKind::FunctionHeader));
@@ -211,8 +248,12 @@ impl ir::Compiler {
                     }))))
                 } else {
                     // assume the symbol is in the module
-                    if let Some(ins) = lvt.get(name.clone()) {
+                    if let Some((ins, generated)) = lvt.get(name.clone()) {
                         // this is a local variable
+                        if !generated {
+                            // return early if this instruction is already in the block
+                            return ins;
+                        }
                         ins
                     } else {
                         Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference::blank(name)))))
@@ -228,7 +269,7 @@ impl ir::Compiler {
     }
 }
 
-struct BlockBuilder {
+pub struct BlockBuilder {
     blocks: Vec<ir::Block>,
     current_block: usize,
 }
@@ -258,17 +299,23 @@ impl BlockBuilder {
 }
 
 #[derive(Debug)]
-struct LocalVariableTable {
-    table: Vec<HashMap<String, Arc<Mutex<ir::Instruction>>>>
+pub struct LocalVariableTable {
+    table: Vec<HashMap<String, Arc<Mutex<ir::Instruction>>>>,
+    parameters: Vec<String>,
 }
 
 impl LocalVariableTable {
-    pub fn new() -> Self {
+    pub fn new_with_params(parameters: Vec<String>) -> Self {
         let mut table = Vec::new();
         table.push(HashMap::new());
         Self {
-            table
+            table,
+            parameters,
         }
+    }
+
+    pub fn new() -> Self {
+        Self::new_with_params(vec![])
     }
 
     pub fn push_depth(&mut self) {
@@ -279,10 +326,16 @@ impl LocalVariableTable {
         self.table.pop();
     }
 
-    pub fn get(&self, name: String) -> Option<Arc<Mutex<ir::Instruction>>> {
+    pub fn get(&self, name: String) -> Option<(Arc<Mutex<ir::Instruction>>, bool)> {
         for x in self.table.iter().rev() {
             if let Some(instruction) = x.get(&name) {
-                return Some(instruction.clone());
+                return Some((instruction.clone(), false));
+            }
+        }
+        // check parameters
+        for param in &self.parameters {
+            if param == &name {
+                return Some((Arc::new(Mutex::new(ir::Instruction::GetParameter(Box::new(ir::GetParameter { name })))), true));
             }
         }
         None

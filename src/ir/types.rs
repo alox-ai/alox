@@ -15,14 +15,16 @@ impl Type {
 
 #[derive(Clone, Debug)]
 pub enum PrimitiveType {
-    Int32,
+    Int(u8),
+    Float(u8),
     Bool,
 }
 
 impl PrimitiveType {
     pub fn name(&self) -> String {
         match self {
-            PrimitiveType::Int32 => String::from("Int32"),
+            PrimitiveType::Int(size) => format!("Int{}", *size),
+            PrimitiveType::Float(size) => format!("Float{}", *size),
             PrimitiveType::Bool => String::from("Bool")
         }
     }

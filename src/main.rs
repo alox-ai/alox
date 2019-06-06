@@ -110,7 +110,7 @@ fn main() {
         statements: vec![
             ast::Statement::Return(Box::new(ast::Return {
                 expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("add"))),
+                    function: ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("+"))),
                     arguments: vec![
                         ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("a"))),
                         ast::Expression::VariableReference(Box::new(ast::VariableReference::from_str("b"))),

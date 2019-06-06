@@ -208,9 +208,20 @@ pub struct FunctionHeader {
 #[derive(Clone, Debug)]
 pub struct Function {
     pub name: String,
+    pub arguments: Vec<String>,
     // assuming this Declaration is a FunctionHeader
     pub header: DeclarationWrapper,
     pub blocks: Vec<Arc<Mutex<Block>>>,
+}
+
+impl Function {
+    pub fn get_header(&self) -> Option<Arc<Declaration>> {
+        let mut guard = self.header.lock().unwrap();
+        if let Some(ref dec) = *guard {
+            return Some(dec.clone());
+        }
+        None
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -235,8 +246,10 @@ pub enum Instruction {
     Unreachable(String),
     IntegerLiteral(Box<IntegerLiteral>),
     DeclarationReference(Box<DeclarationReference>),
+    GetParameter(Box<GetParameter>),
     FunctionCall(Box<FunctionCall>),
     Return(Box<Return>),
+    Jump(Box<Jump>),
     Branch(Box<Branch>),
 }
 
@@ -268,6 +281,11 @@ impl DeclarationReference {
 }
 
 #[derive(Clone, Debug)]
+pub struct GetParameter {
+    pub name: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct FunctionCall {
     pub function: Arc<Mutex<Instruction>>,
     pub arguments: Vec<Arc<Mutex<Instruction>>>,
@@ -279,6 +297,13 @@ pub struct Return {
 }
 
 #[derive(Clone, Debug)]
-pub struct Branch {
+pub struct Jump {
     pub block: Arc<Mutex<Block>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Branch {
+    pub condition: Arc<Mutex<Instruction>>,
+    pub true_block: Arc<Mutex<Block>>,
+    pub false_block: Arc<Mutex<Block>>,
 }
