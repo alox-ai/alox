@@ -51,14 +51,15 @@ impl Printer {
 
     pub fn print_function_header(&mut self, header: &Box<FunctionHeader>) {
         let mut joined_args = "".to_string();
-        for (id, (arg, _)) in (&header.arguments).iter().enumerate() {
-            joined_args.push_str(&format!("%{}", arg));
+        for (id, (arg, dec)) in (&header.arguments).iter().enumerate() {
+            joined_args.push_str(&format!("%{}: {}", arg, name(dec)));
             if id < header.arguments.len() - 1 {
                 joined_args.push_str(", ");
             }
         }
 
-        self.print(format!("fun @{}({}):", header.name, joined_args));
+        let return_type_name = name(&header.return_type);
+        self.print(format!("fun @{}({}) -> {}:", header.name, joined_args, return_type_name));
         self.push();
         self.print(format!("perms: {:?}", header.permissions));
 
@@ -76,14 +77,38 @@ impl Printer {
 
     pub fn print_function(&mut self, function: &Box<Function>) {
         let mut joined_args = "".to_string();
+        let header = function.get_header();
         for (id, arg) in (&function.arguments).iter().enumerate() {
-            joined_args.push_str(&format!("%{}", arg));
+            let mut arg_str = format!("%{}", arg.0);
+
+            // get the type name from the header declaration
+            if let Some(header) = header.clone() {
+                if let Declaration::FunctionHeader(ref header) = *header {
+                    if let Some(header_arg) = header.arguments.get(id) {
+                        arg_str = format!("%{}: {}", arg.0, name(&header_arg.1));
+                    }
+                }
+            }
+
+            joined_args.push_str(&arg_str);
             if id < function.arguments.len() - 1 {
                 joined_args.push_str(", ");
             }
         }
 
-        self.print(format!("let @{}({}):", function.name, joined_args));
+        // get the return type name from the header declaration
+        if let Some(header) = header.clone() {
+            if let Declaration::FunctionHeader(ref header) = *header {
+                let return_type_name = name(&header.return_type);
+                self.print(format!("let @{}({}) -> {}:", function.name, joined_args, return_type_name));
+            } else {
+                self.print(format!("let @{}({}):", function.name, joined_args));
+                self.print(format!("; Error: pointer isn't a header declaration!!"))
+            }
+        } else {
+            self.print(format!("let @{}({}):", function.name, joined_args));
+            self.print(format!("; Error: missing pointer to header declaration!!"))
+        }
 
         self.push();
         for (id, block) in function.blocks.iter().enumerate() {

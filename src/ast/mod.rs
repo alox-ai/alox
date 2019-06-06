@@ -87,7 +87,7 @@ pub struct FunctionDeclaration {
 #[derive(Clone, Debug)]
 pub struct FunctionDefinition {
     pub name: String,
-    pub arguments: Vec<(String, Option<String>)>,
+    pub arguments: Vec<(String, Option<(Path, String)>)>,
     pub statements: Vec<Statement>,
 }
 

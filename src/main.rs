@@ -211,8 +211,8 @@ fn main() {
         printer.print_module(module);
     }
 
-//    let resolutions = compiler.resolutions_needed.read().unwrap();
-//    for needed_resolution in resolutions.iter() {
-//        dbg!(needed_resolution);
-//    }
+    let resolutions = compiler.resolutions_needed.read().unwrap();
+    for needed_resolution in resolutions.iter() {
+        dbg!(needed_resolution);
+    }
 }

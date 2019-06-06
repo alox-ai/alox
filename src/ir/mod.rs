@@ -5,14 +5,34 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use crate::ast;
 use crate::ir::debug::Printer;
-use crate::ir::types::Type;
+use crate::ir::types::{Type, PrimitiveType};
 
 pub mod convert;
 pub mod types;
 pub mod debug;
 
 // Thread safe reference to a mutable option of a thread safe reference to a declaration
+// acts as a declaration "hole" that needs to be filled
 type DeclarationWrapper = Arc<Mutex<Option<Arc<Declaration>>>>;
+
+pub fn is_same_type(sel: &DeclarationWrapper, other: &DeclarationWrapper) -> bool {
+    let self_guard = sel.lock().unwrap();
+    if let Some(ref self_dec) = *self_guard {
+        let other_guard = other.lock().unwrap();
+        if let Some(ref other_dec) = *other_guard {
+            return self_dec.is_same_type(other_dec);
+        }
+    }
+    false
+}
+
+pub fn name(dec: &DeclarationWrapper) -> String {
+    let guard = dec.lock().unwrap();
+    if let Some(ref dec) = *guard {
+        return dec.name();
+    }
+    String::from("notfound")
+}
 
 pub fn wrap_declaration(declaration: Declaration) -> DeclarationWrapper {
     Arc::new(Mutex::new(Some(Arc::new(declaration))))
@@ -65,6 +85,10 @@ impl Compiler {
                 return Arc::new(Mutex::new(declaration));
             }
         }
+        if let Some(primitive) = PrimitiveType::from_name(name.clone()) {
+            return Arc::new(Mutex::new(Some(Arc::new(Declaration::PrimitiveType(Box::new(primitive))))));
+        }
+
         let declaration: DeclarationWrapper = Arc::new(Mutex::new(None));
         let key = (path, name.clone(), kind, declaration.clone());
 
@@ -121,7 +145,7 @@ pub enum Declaration {
     Struct(Box<Struct>),
     Trait(Box<Trait>),
     Variable(Box<Variable>),
-    Type(Box<Type>),
+    PrimitiveType(Box<PrimitiveType>),
 }
 
 impl Declaration {
@@ -132,7 +156,7 @@ impl Declaration {
             Declaration::Struct(s) => s.name.clone(),
             Declaration::Trait(t) => t.name.clone(),
             Declaration::Variable(v) => v.name.clone(),
-            Declaration::Type(t) => t.name().clone(),
+            Declaration::PrimitiveType(p) => p.name().clone(),
         }
     }
 
@@ -143,7 +167,7 @@ impl Declaration {
             Declaration::Struct(_) => DeclarationKind::Struct,
             Declaration::Trait(_) => DeclarationKind::Trait,
             Declaration::Variable(_) => DeclarationKind::Variable,
-            Declaration::Type(_) => DeclarationKind::Type,
+            Declaration::PrimitiveType(_) => DeclarationKind::Type,
         }
     }
 
@@ -152,10 +176,30 @@ impl Declaration {
         if this == kind { return true; }
         if kind == DeclarationKind::Type
             && (this == DeclarationKind::Struct
-            || this == DeclarationKind::Trait) {
+            || this == DeclarationKind::Trait
+            || this == DeclarationKind::Function
+            || this == DeclarationKind::FunctionHeader) {
             return true;
         }
         false
+    }
+
+    pub fn is_type(&self) -> bool {
+        let kind = self.declaration_kind();
+        kind == DeclarationKind::Type
+            || kind == DeclarationKind::Struct
+            || kind == DeclarationKind::Trait
+            || kind == DeclarationKind::Function
+            || kind == DeclarationKind::FunctionHeader
+    }
+
+    pub fn is_same_type(&self, declaration: &Declaration) -> bool {
+        // one of these isn't a type
+        if !self.is_type() || !declaration.is_type() { return false; }
+        // we're comparing different kinds of types
+        if self.declaration_kind() != declaration.declaration_kind() { return false; }
+        // compare the pointers
+        self as *const _ == declaration as *const _
     }
 }
 
@@ -208,7 +252,7 @@ pub struct FunctionHeader {
 #[derive(Clone, Debug)]
 pub struct Function {
     pub name: String,
-    pub arguments: Vec<String>,
+    pub arguments: Vec<(String, Option<DeclarationWrapper>)>,
     // assuming this Declaration is a FunctionHeader
     pub header: DeclarationWrapper,
     pub blocks: Vec<Arc<Mutex<Block>>>,

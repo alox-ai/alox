@@ -11,7 +11,7 @@ impl ir::Compiler {
         // args for module
         let name = program.file_name;
         let path = program.path;
-        let mut declarations: Vec<Arc<ir::Declaration>> = vec![];
+        let mut completed_declarations: Vec<Arc<ir::Declaration>> = vec![];
 
         // go over each node and generate the ir
         for mut node in program.nodes {
@@ -25,7 +25,7 @@ impl ir::Compiler {
 
                     for f in s.function_declarations {
                         let now = Instant::now();
-                        let function_header = self.generate_ir_function_header(&f);
+                        let function_header = self.generate_ir_function_header(&completed_declarations, &f);
                         function_headers_unwrapped.push(Arc::new(function_header));
                         println!("convert function_declaration: {} {:?}", f.name, now.elapsed());
                     }
@@ -44,7 +44,7 @@ impl ir::Compiler {
                             }
                         }
                         if let None = header {
-                            for declaration in declarations.iter() {
+                            for declaration in completed_declarations.iter() {
                                 match *declaration.clone() {
                                     ir::Declaration::FunctionHeader(ref f) => {
                                         if f.name == name {
@@ -55,7 +55,7 @@ impl ir::Compiler {
                                 }
                             }
                         }
-                        let function = self.generate_ir_function_definition(&declarations, &f, header);
+                        let function = self.generate_ir_function_definition(&completed_declarations, &f, header);
                         functions.push(ir::wrap_declaration(function));
                         println!("convert function_definition: {} {:?}", f.name, now.elapsed());
                     }
@@ -72,20 +72,20 @@ impl ir::Compiler {
                         function_headers: Arc::new(RwLock::new(function_headers)),
                         functions: Arc::new(RwLock::new(functions)),
                     };
-                    declarations.push(Arc::new(ir::Declaration::Struct(Box::new(strct))));
+                    completed_declarations.push(Arc::new(ir::Declaration::Struct(Box::new(strct))));
                 }
                 ast::Node::Trait(t) => {}
 
                 ast::Node::FunctionDeclaration(f) => {
                     let now = Instant::now();
-                    let function_header = self.generate_ir_function_header(f.as_ref());
-                    declarations.push(Arc::new(function_header));
+                    let function_header = self.generate_ir_function_header(&completed_declarations, f.as_ref());
+                    completed_declarations.push(Arc::new(function_header));
                     println!("convert function_declaration: {} {:?}", f.name, now.elapsed());
                 }
                 ast::Node::FunctionDefinition(f) => {
                     let now = Instant::now();
                     let mut header: Option<Arc<ir::Declaration>> = None;
-                    for declaration in declarations.iter() {
+                    for declaration in completed_declarations.iter() {
                         match *declaration.clone() {
                             ir::Declaration::FunctionHeader(ref f) => {
                                 if f.name == name {
@@ -96,8 +96,8 @@ impl ir::Compiler {
                         }
                     }
 
-                    let function = self.generate_ir_function_definition(&declarations, f.as_ref(), header);
-                    declarations.push(Arc::new(function));
+                    let function = self.generate_ir_function_definition(&completed_declarations, f.as_ref(), header);
+                    completed_declarations.push(Arc::new(function));
                     println!("convert function_definition: {} {:?}", f.name, now.elapsed());
                 }
                 ast::Node::VariableDeclaration(v) => {}
@@ -107,11 +107,11 @@ impl ir::Compiler {
         ir::Module {
             path,
             name,
-            declarations,
+            declarations: completed_declarations,
         }
     }
 
-    pub fn generate_ir_function_header(&self, f: &ast::FunctionDeclaration) -> ir::Declaration {
+    pub fn generate_ir_function_header(&self, declarations: &Vec<Arc<ir::Declaration>>, f: &ast::FunctionDeclaration) -> ir::Declaration {
         let name = f.name.clone();
         let mut arguments: Vec<(String, ir::DeclarationWrapper)> = Vec::with_capacity(f.arguments.len());
         for (name, type_path) in f.arguments.iter() {
@@ -129,7 +129,7 @@ impl ir::Compiler {
                 params.push(name.clone());
             }
             let mut lvt = LocalVariableTable::new_with_params(params);
-            let expr_ins = self.generate_ir_expression(&mut lvt, block_builder.current_block(), &expression, None);
+            let expr_ins = self.generate_ir_expression(declarations, &mut lvt, block_builder.current_block(), &expression, None);
 
             // return the final expression instruction at the end of the block
             let ret_ins = Arc::new(Mutex::new(ir::Instruction::Return(Box::new(ir::Return { instruction: expr_ins }))));
@@ -165,7 +165,7 @@ impl ir::Compiler {
         let mut lvt = LocalVariableTable::new_with_params(param_names);
 
         for statement in f.statements.iter() {
-            self.generate_ir_statement(&mut lvt, &mut block_builder, statement);
+            self.generate_ir_statement(declarations, &mut lvt, &mut block_builder, statement);
         }
 
         let blocks = block_builder.blocks;
@@ -177,9 +177,14 @@ impl ir::Compiler {
             }
         }
 
-        let mut arguments = vec![];
-        for (arg, _) in &f.arguments {
-            arguments.push(arg.clone());
+        let mut arguments: Vec<(String, Option<ir::DeclarationWrapper>)> = Vec::with_capacity(f.arguments.len());
+        for (name, type_path) in f.arguments.iter() {
+            if let Some(type_path) = type_path {
+                let typ = self.resolve(type_path.0.clone(), type_path.1.clone(), Some(ir::DeclarationKind::Type));
+                arguments.push((name.clone(), Some(typ)));
+            } else {
+                arguments.push((name.clone(), None));
+            }
         }
 
         ir::Declaration::Function(Box::new(ir::Function {
@@ -190,23 +195,23 @@ impl ir::Compiler {
         }))
     }
 
-    pub fn generate_ir_statement(&self, lvt: &mut LocalVariableTable, block_builder: &mut BlockBuilder, statement: &ast::Statement) {
+    pub fn generate_ir_statement(&self, completed_declarations: &Vec<Arc<ir::Declaration>>, lvt: &mut LocalVariableTable, block_builder: &mut BlockBuilder, statement: &ast::Statement) {
         match statement {
             ast::Statement::VariableDeclaration(d) => {
-                let expr_ins = self.generate_ir_expression(lvt, block_builder.current_block(), &d.initial_expression, None);
+                let expr_ins = self.generate_ir_expression(completed_declarations, lvt, block_builder.current_block(), &d.initial_expression, None);
                 lvt.set(d.name.clone(), expr_ins);
             }
             ast::Statement::Return(r) => {
-                let expr_ins = self.generate_ir_expression(lvt, block_builder.current_block(), &r.expression, None);
+                let expr_ins = self.generate_ir_expression(completed_declarations, lvt, block_builder.current_block(), &r.expression, None);
                 let return_ins = Arc::new(Mutex::new(ir::Instruction::Return(Box::new(ir::Return { instruction: expr_ins }))));
                 block_builder.add_instruction(return_ins);
                 block_builder.create_block();
             }
             ast::Statement::FunctionCall(call) => {
-                let function = self.generate_ir_expression(lvt, block_builder.current_block(), &call.function, Some(ir::DeclarationKind::FunctionHeader));
+                let function = self.generate_ir_expression(completed_declarations, lvt, block_builder.current_block(), &call.function, Some(ir::DeclarationKind::FunctionHeader));
                 let mut arguments = Vec::with_capacity(call.arguments.len());
                 for argument in call.arguments.iter() {
-                    let argument_ins = self.generate_ir_expression(lvt, block_builder.current_block(), argument, None);
+                    let argument_ins = self.generate_ir_expression(completed_declarations, lvt, block_builder.current_block(), argument, None);
                     arguments.push(argument_ins);
                 }
                 let call_ins = Arc::new(Mutex::new(ir::Instruction::FunctionCall(Box::new(ir::FunctionCall {
@@ -219,16 +224,16 @@ impl ir::Compiler {
         }
     }
 
-    pub fn generate_ir_expression(&self, lvt: &mut LocalVariableTable, block: &mut ir::Block, expression: &ast::Expression, declaration_context: Option<ir::DeclarationKind>) -> Arc<Mutex<ir::Instruction>> {
+    pub fn generate_ir_expression(&self, completed_declarations: &Vec<Arc<ir::Declaration>>, lvt: &mut LocalVariableTable, block: &mut ir::Block, expression: &ast::Expression, declaration_context: Option<ir::DeclarationKind>) -> Arc<Mutex<ir::Instruction>> {
         let ins = match expression {
             ast::Expression::IntegerLiteral(i) => {
                 Arc::new(Mutex::new(ir::Instruction::IntegerLiteral(Box::new(ir::IntegerLiteral(i.as_ref().0)))))
             }
             ast::Expression::FunctionCall(call) => {
-                let function = self.generate_ir_expression(lvt, block, &call.function, Some(ir::DeclarationKind::FunctionHeader));
+                let function = self.generate_ir_expression(completed_declarations, lvt, block, &call.function, Some(ir::DeclarationKind::FunctionHeader));
                 let mut arguments = Vec::with_capacity(call.arguments.len());
                 for argument in call.arguments.iter() {
-                    let argument_ins = self.generate_ir_expression(lvt, block, argument, None);
+                    let argument_ins = self.generate_ir_expression(completed_declarations, lvt, block, argument, None);
                     arguments.push(argument_ins);
                 }
                 Arc::new(Mutex::new(ir::Instruction::FunctionCall(Box::new(ir::FunctionCall {
@@ -256,9 +261,24 @@ impl ir::Compiler {
                         }
                         ins
                     } else {
-                        Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference::blank(name)))))
-//                        let debug = format!("VariableReference({})", name);
-//                        Arc::new(Mutex::new(ir::Instruction::Unreachable(debug)))
+                        // search the current module declarations for it
+                        let mut found_dec = None;
+                        for declaration in completed_declarations.iter() {
+                            if declaration.name() == name {
+                                found_dec = Some(Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference {
+                                    // TODO: make the path the current module
+                                    name: (None, name.clone()),
+                                    declaration: Arc::new(Mutex::new(Some(declaration.clone()))),
+                                })))));
+                                break;
+                            }
+                        }
+                        if let Some(found_dec) = found_dec {
+                            found_dec
+                        } else {
+                            // TODO: add to resolver?
+                            Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(ir::DeclarationReference::blank(name)))))
+                        }
                     }
                 }
             }
