@@ -40,8 +40,12 @@ impl PrimitiveType {
             return Some(PrimitiveType::Float(name[5..].parse::<u8>().unwrap()));
         }
 
-        if name == "Bool".to_string() { return Some(PrimitiveType::Bool); }
-        if name == "Void".to_string() { return Some(PrimitiveType::Void); }
+        if name == "Bool".to_string() {
+            return Some(PrimitiveType::Bool);
+        }
+        if name == "Void".to_string() {
+            return Some(PrimitiveType::Void);
+        }
         None
     }
 }

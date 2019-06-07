@@ -5,14 +5,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use crate::ir::*;
 
 pub struct Printer {
-    depth: usize
+    depth: usize,
 }
 
 impl Printer {
     pub fn new() -> Self {
-        Self {
-            depth: 0
-        }
+        Self { depth: 0 }
     }
 
     pub fn push(&mut self) {
@@ -31,7 +29,11 @@ impl Printer {
     }
 
     pub fn print_module(&mut self, module: &Module) {
-        self.print(format!("; Module: {}::{}", module.path.to_string(), module.name));
+        self.print(format!(
+            "; Module: {}::{}",
+            module.path.to_string(),
+            module.name
+        ));
         for declaration in module.declarations.iter() {
             self.print_declaration(declaration);
         }
@@ -59,7 +61,10 @@ impl Printer {
         }
 
         let return_type_name = name(&header.return_type);
-        self.print(format!("fun @{}({}) -> {}:", header.name, joined_args, return_type_name));
+        self.print(format!(
+            "fun @{}({}) -> {}:",
+            header.name, joined_args, return_type_name
+        ));
         self.push();
         self.print(format!("perms: {:?}", header.permissions));
 
@@ -100,9 +105,12 @@ impl Printer {
         if let Some(header) = header.clone() {
             if let Declaration::FunctionHeader(ref header) = *header {
                 let return_type_name = name(&header.return_type);
-                self.print(format!("let @{}({}) -> {}:", function.name, joined_args, return_type_name));
+                self.print(format!(
+                    "let @{} = ({}) -> {}:",
+                    function.name, joined_args, return_type_name
+                ));
             } else {
-                self.print(format!("let @{}({}):", function.name, joined_args));
+                self.print(format!("let @{} = ({}):", function.name, joined_args));
                 self.print(format!("; Error: pointer isn't a header declaration!!"))
             }
         } else {
@@ -130,33 +138,44 @@ impl Printer {
         self.pop();
     }
 
-    pub fn print_instruction(&mut self, map: &HashMap<*const Mutex<Instruction>, usize>, id: usize, instruction: &Arc<Mutex<Instruction>>) {
+    pub fn print_instruction(
+        &mut self,
+        map: &HashMap<*const Mutex<Instruction>, usize>,
+        id: usize,
+        instruction: &Arc<Mutex<Instruction>>,
+    ) {
         let mut instruction = instruction.lock().unwrap();
         match *instruction {
             Instruction::DeclarationReference(ref d) => {
                 let (path, name) = &d.name;
                 let path_name = match path {
                     Some(path) => path.to_string(),
-                    None => "".to_string()
+                    None => "".to_string(),
                 };
                 let filled = match *(d.declaration.lock().unwrap()) {
                     None => "*",
-                    Some(_) => ""
+                    Some(_) => "",
                 };
 
                 self.print(format!("%{} = @{}::{}{}", id, path_name, name, filled))
             }
-            Instruction::IntegerLiteral(ref i) => {
-                self.print(format!("%{} = {}", id, i.as_ref().0))
-            }
+            Instruction::IntegerLiteral(ref i) => self.print(format!("%{} = {}", id, i.as_ref().0)),
             Instruction::FunctionCall(ref call) => {
                 let function = call.function.as_ref() as *const Mutex<Instruction>;
-                let function_id = if let Some(id) = map.get(&function) { *id } else { 99999 };
+                let function_id = if let Some(id) = map.get(&function) {
+                    *id
+                } else {
+                    99999
+                };
 
                 let mut arg_ids = Vec::with_capacity(call.arguments.len());
                 for arg in call.arguments.iter() {
                     let p = arg.as_ref() as *const Mutex<Instruction>;
-                    let arg_id = if let Some(id) = map.get(&p) { *id } else { 88888 };
+                    let arg_id = if let Some(id) = map.get(&p) {
+                        *id
+                    } else {
+                        88888
+                    };
                     arg_ids.push(arg_id);
                 }
                 let arg_strings: Vec<String> = arg_ids.iter().map(|i| format!("%{}", *i)).collect();
@@ -166,16 +185,18 @@ impl Printer {
             }
             Instruction::Return(ref ret) => {
                 let value = ret.instruction.as_ref() as *const Mutex<Instruction>;
-                let value_id = if let Some(id) = map.get(&value) { *id } else { 77777 };
+                let value_id = if let Some(id) = map.get(&value) {
+                    *id
+                } else {
+                    77777
+                };
 
                 self.print(format!("ret %{}", value_id))
             }
             Instruction::GetParameter(ref param) => {
                 self.print(format!("%{} = param %{}", id, param.name))
             }
-            _ => {
-                self.print(format!("%{} = unprintable", id))
-            }
+            _ => self.print(format!("%{} = unprintable", id)),
         }
     }
 }

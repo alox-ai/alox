@@ -46,8 +46,9 @@ impl Expression {
         match self {
             Expression::IntegerLiteral(_) => "IntegerLiteral",
             Expression::VariableReference(_) => "VariableReference",
-            Expression::FunctionCall(_) => "FunctionCall"
-        }.to_string()
+            Expression::FunctionCall(_) => "FunctionCall",
+        }
+        .to_string()
     }
 }
 
@@ -101,7 +102,9 @@ pub struct VariableDeclaration {
 // -- STATEMENTS -- \\
 
 #[derive(Clone, Debug)]
-pub struct Return { pub expression: Expression }
+pub struct Return {
+    pub expression: Expression,
+}
 
 #[derive(Clone, Debug)]
 pub struct IfStatement {
@@ -140,10 +143,7 @@ impl VariableReference {
     }
 
     pub fn from_string(name: String) -> VariableReference {
-        VariableReference {
-            path: None,
-            name,
-        }
+        VariableReference { path: None, name }
     }
 }
 

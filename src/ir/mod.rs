@@ -5,11 +5,11 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use crate::ast;
 use crate::ir::debug::Printer;
-use crate::ir::types::{Type, PrimitiveType};
+use crate::ir::types::{PrimitiveType, Type};
 
 pub mod convert;
-pub mod types;
 pub mod debug;
+pub mod types;
 
 // Thread safe reference to a mutable option of a thread safe reference to a declaration
 // acts as a declaration "hole" that needs to be filled
@@ -40,7 +40,14 @@ pub fn wrap_declaration(declaration: Declaration) -> DeclarationWrapper {
 
 pub struct Compiler {
     pub modules: RwLock<Vec<Module>>,
-    pub resolutions_needed: RwLock<Vec<(ast::Path, String, Option<DeclarationKind>, DeclarationWrapper)>>,
+    pub resolutions_needed: RwLock<
+        Vec<(
+            ast::Path,
+            String,
+            Option<DeclarationKind>,
+            DeclarationWrapper,
+        )>,
+    >,
 }
 
 impl Compiler {
@@ -78,7 +85,12 @@ impl Compiler {
         self.modules.write().unwrap().push(module);
     }
 
-    pub fn resolve(&self, path: ast::Path, name: String, kind: Option<DeclarationKind>) -> DeclarationWrapper {
+    pub fn resolve(
+        &self,
+        path: ast::Path,
+        name: String,
+        kind: Option<DeclarationKind>,
+    ) -> DeclarationWrapper {
         for module in self.modules.read().unwrap().iter() {
             if module.full_path() == path {
                 let declaration = module.resolve(name.clone(), kind);
@@ -86,7 +98,9 @@ impl Compiler {
             }
         }
         if let Some(primitive) = PrimitiveType::from_name(name.clone()) {
-            return Arc::new(Mutex::new(Some(Arc::new(Declaration::PrimitiveType(Box::new(primitive))))));
+            return Arc::new(Mutex::new(Some(Arc::new(Declaration::PrimitiveType(
+                Box::new(primitive),
+            )))));
         }
 
         let declaration: DeclarationWrapper = Arc::new(Mutex::new(None));
@@ -173,12 +187,15 @@ impl Declaration {
 
     pub fn is_declaration_kind(&self, kind: DeclarationKind) -> bool {
         let this = self.declaration_kind();
-        if this == kind { return true; }
+        if this == kind {
+            return true;
+        }
         if kind == DeclarationKind::Type
             && (this == DeclarationKind::Struct
-            || this == DeclarationKind::Trait
-            || this == DeclarationKind::Function
-            || this == DeclarationKind::FunctionHeader) {
+                || this == DeclarationKind::Trait
+                || this == DeclarationKind::Function
+                || this == DeclarationKind::FunctionHeader)
+        {
             return true;
         }
         false
@@ -195,9 +212,13 @@ impl Declaration {
 
     pub fn is_same_type(&self, declaration: &Declaration) -> bool {
         // one of these isn't a type
-        if !self.is_type() || !declaration.is_type() { return false; }
+        if !self.is_type() || !declaration.is_type() {
+            return false;
+        }
         // we're comparing different kinds of types
-        if self.declaration_kind() != declaration.declaration_kind() { return false; }
+        if self.declaration_kind() != declaration.declaration_kind() {
+            return false;
+        }
         // compare the pointers
         self as *const _ == declaration as *const _
     }
@@ -270,13 +291,13 @@ impl Function {
 
 #[derive(Clone, Debug)]
 pub struct Block {
-    pub instructions: Vec<Arc<Mutex<Instruction>>>
+    pub instructions: Vec<Arc<Mutex<Instruction>>>,
 }
 
 impl Block {
     pub fn new() -> Block {
         Block {
-            instructions: Vec::with_capacity(5)
+            instructions: Vec::with_capacity(5),
         }
     }
 
