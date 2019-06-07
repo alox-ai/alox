@@ -95,8 +95,4 @@ let main = () -> {
 }
 ```
 
-```rust
-
-```
-
 Inspired by _Rust, Liquid Haskell, & many more_.

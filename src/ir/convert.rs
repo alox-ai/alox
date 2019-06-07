@@ -71,7 +71,7 @@ impl ir::Compiler {
                             &f,
                             header,
                         );
-                        functions.push(ir::wrap_declaration(function));
+                        functions.push(ir::DeclarationContainer::from(function));
                         println!(
                             "convert function_definition: {} {:?}",
                             f.name,
@@ -80,9 +80,9 @@ impl ir::Compiler {
                     }
 
                     // wrap headers
-                    let function_headers: Vec<ir::DeclarationWrapper> = function_headers_unwrapped
+                    let function_headers: Vec<ir::DeclarationContainer> = function_headers_unwrapped
                         .iter_mut()
-                        .map(|f| Arc::new(Mutex::new(Some((*f).clone()))))
+                        .map(|f| ir::DeclarationContainer(Arc::new(Mutex::new(Some((*f).clone())))))
                         .collect();
 
                     let strct = ir::Struct {
@@ -155,7 +155,7 @@ impl ir::Compiler {
         f: &ast::FunctionDeclaration,
     ) -> ir::Declaration {
         let name = f.name.clone();
-        let mut arguments: Vec<(String, ir::DeclarationWrapper)> =
+        let mut arguments: Vec<(String, ir::DeclarationContainer)> =
             Vec::with_capacity(f.arguments.len());
         for (name, type_path) in f.arguments.iter() {
             let typ = self.resolve(
@@ -249,7 +249,7 @@ impl ir::Compiler {
             }
         }
 
-        let mut arguments: Vec<(String, Option<ir::DeclarationWrapper>)> =
+        let mut arguments: Vec<(String, Option<ir::DeclarationContainer>)> =
             Vec::with_capacity(f.arguments.len());
         for (name, type_path) in f.arguments.iter() {
             if let Some(type_path) = type_path {
@@ -267,7 +267,7 @@ impl ir::Compiler {
         ir::Declaration::Function(Box::new(ir::Function {
             name,
             arguments,
-            header: Arc::new(Mutex::new(header)),
+            header: ir::DeclarationContainer(Arc::new(Mutex::new(header))),
             blocks: blocks_wrapped,
         }))
     }
@@ -412,9 +412,9 @@ impl ir::Compiler {
                                     ir::Instruction::DeclarationReference(Box::new(
                                         ir::DeclarationReference {
                                             name: (Some(current_path.clone()), name.clone()),
-                                            declaration: Arc::new(Mutex::new(Some(
+                                            declaration: ir::DeclarationContainer(Arc::new(Mutex::new(Some(
                                                 declaration.clone(),
-                                            ))),
+                                            )))),
                                         },
                                     )),
                                 )));

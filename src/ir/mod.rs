@@ -13,29 +13,36 @@ pub mod types;
 
 // Thread safe reference to a mutable option of a thread safe reference to a declaration
 // acts as a declaration "hole" that needs to be filled
-type DeclarationWrapper = Arc<Mutex<Option<Arc<Declaration>>>>;
+#[derive(Clone, Debug)]
+pub struct DeclarationContainer(Arc<Mutex<Option<Arc<Declaration>>>>);
 
-pub fn is_same_type(sel: &DeclarationWrapper, other: &DeclarationWrapper) -> bool {
-    let self_guard = sel.lock().unwrap();
-    if let Some(ref self_dec) = *self_guard {
-        let other_guard = other.lock().unwrap();
-        if let Some(ref other_dec) = *other_guard {
-            return self_dec.is_same_type(other_dec);
+impl DeclarationContainer {
+    pub fn from(declaration: Declaration) -> Self {
+        Self(Arc::new(Mutex::new(Some(Arc::new(declaration)))))
+    }
+
+    pub fn empty() -> Self {
+        Self(Arc::new(Mutex::new(None)))
+    }
+
+    pub fn is_same_type(&self, other: &Self) -> bool {
+        let self_guard = self.0.lock().unwrap();
+        if let Some(ref self_dec) = *self_guard {
+            let other_guard = other.0.lock().unwrap();
+            if let Some(ref other_dec) = *other_guard {
+                return self_dec.is_same_type(other_dec);
+            }
         }
+        false
     }
-    false
-}
 
-pub fn name(dec: &DeclarationWrapper) -> String {
-    let guard = dec.lock().unwrap();
-    if let Some(ref dec) = *guard {
-        return dec.name();
+    pub fn name(&self) -> String {
+        let guard = self.0.lock().unwrap();
+        if let Some(ref dec) = *guard {
+            return dec.name();
+        }
+        String::from("notfound")
     }
-    String::from("notfound")
-}
-
-pub fn wrap_declaration(declaration: Declaration) -> DeclarationWrapper {
-    Arc::new(Mutex::new(Some(Arc::new(declaration))))
 }
 
 pub struct Compiler {
@@ -45,7 +52,7 @@ pub struct Compiler {
             ast::Path,
             String,
             Option<DeclarationKind>,
-            DeclarationWrapper,
+            DeclarationContainer,
         )>,
     >,
 }
@@ -68,7 +75,7 @@ impl Compiler {
         for (i, needed_resolution) in resolutions.iter().enumerate() {
             // this needs the module we are adding
             if needed_resolution.0 == path {
-                let mut data = needed_resolution.3.lock().unwrap();
+                let mut data = (needed_resolution.3).0.lock().unwrap();
                 let declaration = module.resolve(needed_resolution.1.clone(), needed_resolution.2);
                 *data = declaration.clone();
                 // mark this resolution as completed
@@ -90,20 +97,20 @@ impl Compiler {
         path: ast::Path,
         name: String,
         kind: Option<DeclarationKind>,
-    ) -> DeclarationWrapper {
+    ) -> DeclarationContainer {
         for module in self.modules.read().unwrap().iter() {
             if module.full_path() == path {
                 let declaration = module.resolve(name.clone(), kind);
-                return Arc::new(Mutex::new(declaration));
+                return DeclarationContainer(Arc::new(Mutex::new(declaration)));
             }
         }
         if let Some(primitive) = PrimitiveType::from_name(name.clone()) {
-            return Arc::new(Mutex::new(Some(Arc::new(Declaration::PrimitiveType(
+            return DeclarationContainer::from(Declaration::PrimitiveType(
                 Box::new(primitive),
-            )))));
+            ));
         }
 
-        let declaration: DeclarationWrapper = Arc::new(Mutex::new(None));
+        let declaration = DeclarationContainer::empty();
         let key = (path, name.clone(), kind, declaration.clone());
 
         self.resolutions_needed.write().unwrap().push(key);
@@ -192,9 +199,9 @@ impl Declaration {
         }
         if kind == DeclarationKind::Type
             && (this == DeclarationKind::Struct
-                || this == DeclarationKind::Trait
-                || this == DeclarationKind::Function
-                || this == DeclarationKind::FunctionHeader)
+            || this == DeclarationKind::Trait
+            || this == DeclarationKind::Function
+            || this == DeclarationKind::FunctionHeader)
         {
             return true;
         }
@@ -228,13 +235,13 @@ impl Declaration {
 pub struct Struct {
     pub name: String,
     // Declaration::Variable
-    pub fields: Arc<RwLock<Vec<DeclarationWrapper>>>,
+    pub fields: Arc<RwLock<Vec<DeclarationContainer>>>,
     // Declaration::Trait
-    pub traits: Arc<RwLock<Vec<DeclarationWrapper>>>,
+    pub traits: Arc<RwLock<Vec<DeclarationContainer>>>,
     // Declaration::FunctionHeader
-    pub function_headers: Arc<RwLock<Vec<DeclarationWrapper>>>,
+    pub function_headers: Arc<RwLock<Vec<DeclarationContainer>>>,
     // Declaration::Function
-    pub functions: Arc<RwLock<Vec<DeclarationWrapper>>>,
+    pub functions: Arc<RwLock<Vec<DeclarationContainer>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -264,8 +271,8 @@ impl Display for Permission {
 pub struct FunctionHeader {
     pub name: String,
     // assuming declarations are types
-    pub arguments: Vec<(String, DeclarationWrapper)>,
-    pub return_type: DeclarationWrapper,
+    pub arguments: Vec<(String, DeclarationContainer)>,
+    pub return_type: DeclarationContainer,
     pub refinements: Vec<(String, Vec<Arc<Mutex<Block>>>)>,
     pub permissions: Vec<Permission>,
 }
@@ -273,15 +280,15 @@ pub struct FunctionHeader {
 #[derive(Clone, Debug)]
 pub struct Function {
     pub name: String,
-    pub arguments: Vec<(String, Option<DeclarationWrapper>)>,
+    pub arguments: Vec<(String, Option<DeclarationContainer>)>,
     // assuming this Declaration is a FunctionHeader
-    pub header: DeclarationWrapper,
+    pub header: DeclarationContainer,
     pub blocks: Vec<Arc<Mutex<Block>>>,
 }
 
 impl Function {
     pub fn get_header(&self) -> Option<Arc<Declaration>> {
-        let mut guard = self.header.lock().unwrap();
+        let mut guard = self.header.0.lock().unwrap();
         if let Some(ref dec) = *guard {
             return Some(dec.clone());
         }
@@ -326,21 +333,21 @@ pub struct IntegerLiteral(pub i64);
 #[derive(Clone, Debug)]
 pub struct DeclarationReference {
     pub name: (Option<ast::Path>, String),
-    pub declaration: DeclarationWrapper,
+    pub declaration: DeclarationContainer,
 }
 
 impl DeclarationReference {
     pub fn blank_with_path(path: ast::Path, name: String) -> Self {
         Self {
             name: (Some(path), name),
-            declaration: Arc::new(Mutex::new(None)),
+            declaration: DeclarationContainer::empty(),
         }
     }
 
     pub fn blank(name: String) -> Self {
         Self {
             name: (None, name),
-            declaration: Arc::new(Mutex::new(None)),
+            declaration: DeclarationContainer::empty(),
         }
     }
 }

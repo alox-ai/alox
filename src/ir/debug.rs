@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::ir::*;
+use std::env::var;
 
 pub struct Printer {
     depth: usize,
@@ -47,20 +48,27 @@ impl Printer {
             Declaration::Function(ref function) => {
                 self.print_function(function);
             }
+            Declaration::Variable(ref variable) => {
+                self.print_variable(variable);
+            }
             _ => {}
         }
+    }
+
+    pub fn print_variable(&mut self, variable: &Box<Variable>) {
+        self.print(format!("let {}", variable.name));
     }
 
     pub fn print_function_header(&mut self, header: &Box<FunctionHeader>) {
         let mut joined_args = "".to_string();
         for (id, (arg, dec)) in (&header.arguments).iter().enumerate() {
-            joined_args.push_str(&format!("%{}: {}", arg, name(dec)));
+            joined_args.push_str(&format!("%{}: {}", arg, dec.name()));
             if id < header.arguments.len() - 1 {
                 joined_args.push_str(", ");
             }
         }
 
-        let return_type_name = name(&header.return_type);
+        let return_type_name = &header.return_type.name();
         self.print(format!(
             "fun @{}({}) -> {}:",
             header.name, joined_args, return_type_name
@@ -90,7 +98,7 @@ impl Printer {
             if let Some(header) = header.clone() {
                 if let Declaration::FunctionHeader(ref header) = *header {
                     if let Some(header_arg) = header.arguments.get(id) {
-                        arg_str = format!("%{}: {}", arg.0, name(&header_arg.1));
+                        arg_str = format!("%{}: {}", arg.0, &header_arg.1.name());
                     }
                 }
             }
@@ -104,7 +112,7 @@ impl Printer {
         // get the return type name from the header declaration
         if let Some(header) = header.clone() {
             if let Declaration::FunctionHeader(ref header) = *header {
-                let return_type_name = name(&header.return_type);
+                let return_type_name = &header.return_type.name();
                 self.print(format!(
                     "let @{} = ({}) -> {}:",
                     function.name, joined_args, return_type_name
@@ -152,7 +160,7 @@ impl Printer {
                     Some(path) => path.to_string(),
                     None => "".to_string(),
                 };
-                let filled = match *(d.declaration.lock().unwrap()) {
+                let filled = match *(d.declaration.0.lock().unwrap()) {
                     None => "*",
                     Some(_) => "",
                 };
