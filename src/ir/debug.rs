@@ -153,6 +153,7 @@ impl Printer {
         instruction: &Arc<Mutex<Instruction>>,
     ) {
         let mut instruction = instruction.lock().unwrap();
+        let ins_type = instruction.get_type().name();
         match *instruction {
             Instruction::DeclarationReference(ref d) => {
                 let (path, name) = &d.name;
@@ -165,9 +166,9 @@ impl Printer {
                     Some(_) => "",
                 };
 
-                self.print(format!("%{} = @{}::{}{}", id, path_name, name, filled))
+                self.print(format!("%{} : {} = @{}::{}{}", id, ins_type, path_name, name, filled))
             }
-            Instruction::IntegerLiteral(ref i) => self.print(format!("%{} = {}", id, i.as_ref().0)),
+            Instruction::IntegerLiteral(ref i) => self.print(format!("%{} : {} = {}", id, ins_type, i.as_ref().0)),
             Instruction::FunctionCall(ref call) => {
                 let function = call.function.as_ref() as *const Mutex<Instruction>;
                 let function_id = if let Some(id) = map.get(&function) {
@@ -189,7 +190,7 @@ impl Printer {
                 let arg_strings: Vec<String> = arg_ids.iter().map(|i| format!("%{}", *i)).collect();
                 let args_connected = arg_strings.join(", ");
 
-                self.print(format!("%{} = %{}({})", id, function_id, args_connected))
+                self.print(format!("%{} : {} = %{}({})", id, ins_type, function_id, args_connected))
             }
             Instruction::Return(ref ret) => {
                 let value = ret.instruction.as_ref() as *const Mutex<Instruction>;
@@ -202,9 +203,9 @@ impl Printer {
                 self.print(format!("ret %{}", value_id))
             }
             Instruction::GetParameter(ref param) => {
-                self.print(format!("%{} = param %{}", id, param.name))
+                self.print(format!("%{} : {} = param %{}", id, ins_type, param.name))
             }
-            _ => self.print(format!("%{} = unprintable", id)),
+            _ => self.print(format!("%{} : {} = unprintable", id, ins_type)),
         }
     }
 }

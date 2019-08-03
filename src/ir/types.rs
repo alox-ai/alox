@@ -14,12 +14,45 @@ impl Debug for Type {
 
 #[derive(Clone, Debug)]
 pub struct UnresolvedType {
-    name: String,
+    pub name: String,
+}
+
+impl UnresolvedType {
+    pub fn of(name: &str) -> Self {
+        UnresolvedType { name: name.to_string() }
+    }
 }
 
 impl Type for UnresolvedType {
     fn name(&self) -> String {
         self.name.clone()
+    }
+}
+
+pub struct StructType {
+    pub name: String,
+}
+
+impl Type for StructType {
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+}
+
+pub struct FunctionType {
+    pub arguments: Vec<Box<Type>>,
+    pub result: Box<Type>,
+}
+
+impl Type for FunctionType {
+    fn name(&self) -> String {
+        let mut s = "".to_string();
+        for x in &self.arguments {
+            s.push_str(&x.name());
+            s.push_str(" -> ")
+        }
+        s.push_str(&self.result.name());
+        s
     }
 }
 
@@ -29,6 +62,7 @@ pub enum PrimitiveType {
     Float(u8),
     Bool,
     Void,
+    NoReturn,
 }
 
 impl PrimitiveType {
@@ -46,6 +80,9 @@ impl PrimitiveType {
         if name == "Void".to_string() {
             return Some(PrimitiveType::Void);
         }
+        if name == "NoReturn".to_string() {
+            return Some(PrimitiveType::NoReturn);
+        }
         None
     }
 }
@@ -57,6 +94,7 @@ impl Type for PrimitiveType {
             PrimitiveType::Float(size) => format!("Float{}", *size),
             PrimitiveType::Bool => String::from("Bool"),
             PrimitiveType::Void => String::from("Void"),
+            PrimitiveType::NoReturn => String::from("NoReturn")
         }
     }
 }
