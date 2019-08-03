@@ -74,6 +74,12 @@ impl PrimitiveType {
             return Some(PrimitiveType::Float(name[5..].parse::<u8>().unwrap()));
         }
 
+        if name == "ComptimeInt".to_string() {
+            return Some(PrimitiveType::Int(255));
+        }
+        if name == "ComptimeFloat".to_string() {
+            return Some(PrimitiveType::Float(255));
+        }
         if name == "Bool".to_string() {
             return Some(PrimitiveType::Bool);
         }
@@ -90,8 +96,10 @@ impl PrimitiveType {
 impl Type for PrimitiveType {
     fn name(&self) -> String {
         match self {
-            PrimitiveType::Int(size) => format!("Int{}", *size),
-            PrimitiveType::Float(size) => format!("Float{}", *size),
+            PrimitiveType::Int(size) =>
+                if *size < 255u8 { format!("Int{}", *size) } else { "ComptimeInt".to_string() },
+            PrimitiveType::Float(size) =>
+                if *size < 255u8 { format!("Float{}", *size) } else { "ComptimeFloat".to_string() },
             PrimitiveType::Bool => String::from("Bool"),
             PrimitiveType::Void => String::from("Void"),
             PrimitiveType::NoReturn => String::from("NoReturn")

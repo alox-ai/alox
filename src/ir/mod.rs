@@ -1,3 +1,5 @@
+use core::borrow::BorrowMut;
+use std::any::Any;
 use std::collections::HashMap;
 use std::fmt::{Display, Error, Formatter};
 use std::rc::Rc;
@@ -10,6 +12,7 @@ use crate::ir::types::{PrimitiveType, Type};
 pub mod convert;
 pub mod debug;
 pub mod types;
+pub mod builtin;
 
 // Thread safe reference to a mutable option of a thread safe reference to a declaration
 // acts as a declaration "hole" that needs to be filled
@@ -42,6 +45,14 @@ impl DeclarationContainer {
             return dec.name();
         }
         String::from("notfound")
+    }
+
+    pub fn get_type(&self) -> Box<Type> {
+        let guard = self.0.lock().unwrap();
+        if let Some(ref dec) = *guard {
+            return dec.get_type();
+        }
+        Box::new(types::UnresolvedType { name: "UnresolvedReference".to_string() })
     }
 }
 
@@ -98,6 +109,12 @@ impl Compiler {
         name: String,
         kind: Option<DeclarationKind>,
     ) -> DeclarationContainer {
+        if path.0.len() == 0 {
+            if let Some(builtin) = builtin::find_builtin_declaration(name.clone(), kind) {
+                return builtin;
+            }
+        }
+
         for module in self.modules.read().unwrap().iter() {
             if module.full_path() == path {
                 let declaration = module.resolve(name.clone(), kind);
@@ -208,6 +225,16 @@ impl Declaration {
         false
     }
 
+    pub fn get_type(&self) -> Box<Type> {
+        match self {
+            Declaration::FunctionHeader(h) => h.get_type(),
+            Declaration::Function(f) => f.get_type(),
+            Declaration::Struct(s) => s.get_type(),
+            Declaration::PrimitiveType(t) => t.clone(),
+            _ => Box::new(types::UnresolvedType::of("UnresolvedDeclaration")),
+        }
+    }
+
     pub fn is_type(&self) -> bool {
         let kind = self.declaration_kind();
         kind == DeclarationKind::Type
@@ -244,6 +271,12 @@ pub struct Struct {
     pub functions: Arc<RwLock<Vec<DeclarationContainer>>>,
 }
 
+impl Struct {
+    pub fn get_type(&self) -> Box<types::StructType> {
+        Box::new(types::StructType { name: self.name.clone() })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Trait {
     pub name: String,
@@ -277,6 +310,19 @@ pub struct FunctionHeader {
     pub permissions: Vec<Permission>,
 }
 
+impl FunctionHeader {
+    pub fn get_type(&self) -> Box<types::FunctionType> {
+        let mut arguments = Vec::<Box<types::Type>>::with_capacity(self.arguments.len());
+
+        for arg in &self.arguments {
+            arguments.push(arg.1.get_type());
+        }
+
+        let result = self.return_type.get_type();
+        Box::new(types::FunctionType { arguments, result })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Function {
     pub name: String,
@@ -293,6 +339,15 @@ impl Function {
             return Some(dec.clone());
         }
         None
+    }
+
+    pub fn get_type(&self) -> Box<Type> {
+        let guard = self.header.0.lock().unwrap();
+        if let Some(ref dec) = *guard {
+            dec.get_type()
+        } else {
+            Box::new(types::UnresolvedType::of("FHeadPointerMissing"))
+        }
     }
 }
 
@@ -323,6 +378,38 @@ pub enum Instruction {
     Return(Box<Return>),
     Jump(Box<Jump>),
     Branch(Box<Branch>),
+}
+
+impl Instruction {
+    pub fn get_type(&self) -> Box<Type> {
+        return match self {
+            Instruction::IntegerLiteral(_) => builtin::COMPTIME_INT.get_type(),
+            Instruction::DeclarationReference(s) => s.declaration.get_type(),
+            Instruction::GetParameter(_) => Box::new(types::UnresolvedType { name: "UnimplementedParamGet".to_string() }),
+            Instruction::FunctionCall(f) => {
+                let ins = f.function.lock().unwrap();
+                match *ins {
+                    Instruction::DeclarationReference(ref f) => {
+                        let guard = f.declaration.0.lock().unwrap();
+                        if let Some(ref dec) = *guard {
+                            match **dec {
+                                Declaration::FunctionHeader(ref h) => h.return_type.get_type(),
+                                _ => Box::new(types::UnresolvedType { name: "UnPointerToFuncBody".to_string() })
+                            }
+                        } else {
+                            Box::new(types::UnresolvedType { name: "UnNoFunctionDec".to_string() })
+                        }
+                    }
+                    _ => Box::new(types::UnresolvedType { name: "UnDecNotFunc".to_string() })
+                }
+            }
+            Instruction::Return(_)
+            | Instruction::Unreachable(_)
+            | Instruction::Jump(_)
+            | Instruction::Branch(_) => Box::new(types::PrimitiveType::NoReturn),
+            _ => Box::new(types::UnresolvedType { name: "UnknownInstruction".to_string() })
+        };
+    }
 }
 
 // -- INSTRUCTIONS -- \\

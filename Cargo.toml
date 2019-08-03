@@ -4,4 +4,12 @@ version = "0.1.0"
 authors = ["Jadon Fowler <j@jadon.io>"]
 edition = "2018"
 
+[build-dependencies]
+#lalrpop = "0.17.1"
+
 [dependencies]
+lazy_static = "1.3.0"
+#pest = "2.0"
+#pest_derive = "2.0"
+#lalrpop-util = "0.17.1"
+#regex = "0.2.1"
