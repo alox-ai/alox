@@ -5,12 +5,14 @@ use std::time::Instant;
 
 use crate::ast;
 use crate::ir;
+use crate::ir::{DeclarationContainer, DeclarationKind};
 
 impl ir::Compiler {
     pub fn generate_ir(&self, program: ast::Program) -> ir::Module {
         // args for module
         let name = program.file_name;
         let path = program.path;
+        let combined_path = path.clone().append(name.clone());
         let current_path = &path.append(name.clone());
         let mut completed_declarations: Vec<Arc<ir::Declaration>> = vec![];
 
@@ -65,11 +67,19 @@ impl ir::Compiler {
                                 }
                             }
                         }
+
+                        let header_container = if let None = header {
+                            // we haven't converted the container yet so we need to put it in the resolution queue
+                            self.resolve(combined_path.clone(), f.name.clone(), Some(DeclarationKind::FunctionHeader))
+                        } else {
+                            ir::DeclarationContainer(Arc::new(Mutex::new(header)))
+                        };
+
                         let function = self.generate_ir_function_definition(
                             current_path,
                             &completed_declarations,
                             &f,
-                            header,
+                            header_container,
                         );
                         functions.push(ir::DeclarationContainer::from(function));
                         println!(
@@ -123,12 +133,18 @@ impl ir::Compiler {
                             _ => {}
                         }
                     }
+                    let header_container = if let None = header {
+                        // we haven't converted the container yet so we need to put it in the resolution queue
+                        self.resolve(combined_path.clone(), f.name.clone(), Some(DeclarationKind::FunctionHeader))
+                    } else {
+                        ir::DeclarationContainer(Arc::new(Mutex::new(header)))
+                    };
 
                     let function = self.generate_ir_function_definition(
                         current_path,
                         &completed_declarations,
                         f.as_ref(),
-                        header,
+                        header_container,
                     );
                     completed_declarations.push(Arc::new(function));
                     println!(
@@ -217,7 +233,7 @@ impl ir::Compiler {
         current_path: &ast::Path,
         declarations: &Vec<Arc<ir::Declaration>>,
         f: &ast::FunctionDefinition,
-        header: Option<Arc<ir::Declaration>>,
+        header: DeclarationContainer,
     ) -> ir::Declaration {
         let name = f.name.clone();
 
@@ -267,7 +283,7 @@ impl ir::Compiler {
         ir::Declaration::Function(Box::new(ir::Function {
             name,
             arguments,
-            header: ir::DeclarationContainer(Arc::new(Mutex::new(header))),
+            header,
             blocks: blocks_wrapped,
         }))
     }

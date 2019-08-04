@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt::{Display, Error, Formatter};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
+use std::thread;
 
 use crate::ast;
 use crate::ir::debug::Printer;
@@ -97,9 +98,12 @@ impl Compiler {
 
         // remove completed resolutions from the list
         let mut writer = self.resolutions_needed.write().unwrap();
-        for index in completed_resolutions {
-            writer.swap_remove(index);
+        let mut diff = 0;
+        for i in completed_resolutions {
+            writer.swap_remove(i - diff);
+            diff += 1;
         }
+        drop(writer);
         self.modules.write().unwrap().push(module);
     }
 
@@ -149,6 +153,7 @@ impl Module {
     }
 
     pub fn resolve(&self, name: String, kind: Option<DeclarationKind>) -> Option<Arc<Declaration>> {
+        println!("module {} resolving {} ", self.name, name);
         if let Some(kind) = kind {
             for declaration in self.declarations.iter() {
                 if declaration.is_declaration_kind(kind) && declaration.name() == name {
