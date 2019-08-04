@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use logos::{Lexer, Logos, Source};
 
 use lexer::Token;
@@ -6,15 +8,87 @@ use crate::ast::*;
 
 pub mod lexer;
 
-pub fn parse_function_declaration(lexer: &mut Lexer<Token, &str>) -> Option<FunctionDeclaration> {
+pub struct ParserError {
+    location: Range<usize>,
+    message: String,
+}
 
+impl ParserError {
+    pub fn from<T>(lexer: &mut Lexer<Token, &str>, message: &str) -> Result<T, Self> {
+        Err(Self {
+            location: lexer.range(),
+            message: message.to_string(),
+        })
+    }
+
+    pub fn to_string(&self, source: &str) -> String {
+        let mut buffer = format!("error: {}\n", self.message);
+
+        let len = source.len();
+        let mut line_num = 0;
+        let mut index = 0;
+        for line in source.lines() {
+            line_num += 1;
+            if self.location.start > index && self.location.end < index + line.len() {
+                // we found the line
+                let err_header = format!("{} | ", line_num);
+                let blank_header = format!("{} | ", " ".repeat(line_num.to_string().len()));
+                buffer.push_str(&blank_header);
+                buffer.push_str(&format!("\n{}{}\n", err_header, line));
+
+                let spaces = " ".repeat(self.location.start - index);
+                let arrows = "^".repeat(self.location.end - self.location.start);
+
+                buffer.push_str(&format!("{}{}{}\n", blank_header, spaces, arrows));
+            }
+            index += line.len();
+        }
+        buffer
+    }
+}
+
+pub fn parse<'a>(path: Path, module_name: String, code: String) -> Option<Program> {
+    let mut program = Program {
+        path,
+        file_name: module_name,
+        imports: vec![],
+        nodes: vec![],
+    };
+
+    let mut lexer: Lexer<Token, &str> = Token::lexer(code.as_str());
+    while lexer.token != Token::End {
+        println!("token: {:?} {}", lexer.token, lexer.slice());
+
+        if lexer.token == Token::Fun {
+            // function header
+            lexer.advance();
+
+            match parse_function_declaration(&mut lexer) {
+                Ok(dec) => {
+                    program.nodes.push(Node::FunctionDeclaration(Box::new(dec)));
+                }
+                Err(err) => {
+                    let err = err.to_string(lexer.source);
+                    eprintln!("{}", err);
+                    return None;
+                }
+            }
+        } else {
+            lexer.advance();
+        }
+    }
+
+    Some(program)
+}
+
+pub fn parse_function_declaration(lexer: &mut Lexer<Token, &str>) -> Result<FunctionDeclaration, ParserError> {
     // fun main
-    if lexer.token != Token::Identifier { return None; }
+    if lexer.token != Token::Identifier { return ParserError::from(lexer, "Expected function name"); }
     let function_name = lexer.slice().to_string();
     lexer.advance();
 
     // fun main(
-    if lexer.token != Token::LeftParen { return None; }
+    if lexer.token != Token::LeftParen { return ParserError::from(lexer, "Expected opening paren"); }
     lexer.advance();
 
     // fun main(x: a::a::a, y: b::b::b
@@ -23,13 +97,13 @@ pub fn parse_function_declaration(lexer: &mut Lexer<Token, &str>) -> Option<Func
         while lexer.token == Token::Identifier {
             let arg_name = lexer.slice().to_string();
             lexer.advance();
-            if lexer.token != Token::Colon { return None; }
+            if lexer.token != Token::Colon { return ParserError::from(lexer, "Expected parameter type"); }
             lexer.advance();
-            if lexer.token != Token::Identifier { return None; }
+            if lexer.token != Token::Identifier { return ParserError::from(lexer, "Expected type name after colon"); }
             let arg_type = parse_path_ident(lexer);
-            if let None = arg_type { return None; }
-            if let Some(arg_type) = arg_type {
-                args.push((arg_name, arg_type));
+            match arg_type {
+                Some(arg_type) => args.push((arg_name, arg_type)),
+                None => return ParserError::from(lexer, "Expected type name after colon")
             }
             if lexer.token == Token::Comma {
                 lexer.advance();
@@ -39,52 +113,36 @@ pub fn parse_function_declaration(lexer: &mut Lexer<Token, &str>) -> Option<Func
         }
 
         // fun main(x: a::a::a, y: b::b::b)
-        if lexer.token != Token::RightParen { return None; }
+        if lexer.token != Token::RightParen {
+            return ParserError::from(lexer, "Expected closing paren");
+        }
         lexer.advance();
     } else if lexer.token == Token::RightParen {
         // fun main()
         lexer.advance();
     } else {
-        return None;
+        return ParserError::from(lexer, "Unexpected symbol");
     }
-
 
     // fun main(x: a::a::a, y: b::b::b): c::c::c
     let ret_type: (Path, String);
     if lexer.token == Token::Colon {
         lexer.advance();
-        if lexer.token != Token::Identifier { return None; }
+        if lexer.token != Token::Identifier { return ParserError::from(lexer, "Expected return type after colon"); }
         let ret_type_o = parse_path_ident(lexer);
-        if let None = ret_type_o { return None; }
+        if let None = ret_type_o { return ParserError::from(lexer, "Expected return type after colon"); }
         ret_type = ret_type_o.unwrap();
     } else {
         ret_type = (Path::of(""), "Void".to_string());
     }
 
-    Some(FunctionDeclaration {
+    Ok(FunctionDeclaration {
         name: function_name,
         arguments: args,
         return_type: ret_type,
         refinements: vec![],
         permissions: vec![],
     })
-}
-
-pub fn parse<'a>(file: String) {
-    let mut lexer: Lexer<Token, &str> = Token::lexer(file.as_str());
-    while lexer.token != Token::End {
-        println!("token: {:?} {}", lexer.token, lexer.slice());
-
-        if lexer.token == Token::Fun {
-            // function header
-            lexer.advance();
-            if let Some(dec) = parse_function_declaration(&mut lexer) {
-                dbg!(dec);
-            }
-        } else {
-            lexer.advance();
-        }
-    }
 }
 
 pub fn parse_path_ident(lexer: &mut Lexer<Token, &str>) -> Option<(Path, String)> {

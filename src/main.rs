@@ -16,14 +16,14 @@ mod ir;
 
 fn main() {
     let test = "\
-    fun main (x: a::a::a, y: b::b::b, z: c::c::c): d::dd::dd \
-    let main = (x, y, z) -> {\
-        let a = INT32_MAX - 2\
-        let b = 3\
-        let c = add(a, b)\
-        println(c)\
+    fun main(x: a::aa::A, y: b::bb::B, z: c::cc::C): d::dd::D
+    def main = (x, y, z) -> {
+        let a = INT32_MAX - 2
+        let b = 3
+        let c = add(a, b)
+        println(c)
     }".to_string();
-    parser::parse(test);
+    let mut parsed_program = parser::parse(ast::Path::of("test"), "parsed".to_string(), test);
 
     let mut add_program = ast::Program {
         path: ast::Path::of("test"),
@@ -307,9 +307,17 @@ fn main() {
         }
     });
 
-    let now = Instant::now();
+    let mut now = Instant::now();
     compiler.add_module(compiler.generate_ir(main_program));
     println!("Main Module: {:?}", now.elapsed());
+    match parsed_program {
+        Some(parsed_program) => {
+            now = Instant::now();
+            compiler.add_module(compiler.generate_ir(parsed_program));
+            println!("Parsed Module: {:?}", now.elapsed());
+        }
+        None => {}
+    }
     handle.join().unwrap();
 
     let mut printer = ir::debug::Printer::new();

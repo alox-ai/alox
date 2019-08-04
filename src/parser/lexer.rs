@@ -10,6 +10,7 @@ pub enum Token {
     #[token = "let"] Let,
     #[token = "var"] Var,
     #[token = "fun"] Fun,
+    #[token = "def"] Def,
 
     // symbols
     #[token = "->"] ThinArrow,
