@@ -1,14 +1,30 @@
 #[macro_use]
 extern crate lazy_static;
+extern crate logos;
 
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
+use logos::Logos;
+
+use parser::lexer::Token;
+
+mod parser;
 mod ast;
 mod ir;
 
 fn main() {
+    let test = "\
+    fun main (x: a::a::a, y: b::b::b, z: c::c::c): d::dd::dd \
+    let main = (x, y, z) -> {\
+        let a = INT32_MAX - 2\
+        let b = 3\
+        let c = add(a, b)\
+        println(c)\
+    }".to_string();
+    parser::parse(test);
+
     let mut add_program = ast::Program {
         path: ast::Path::of("test"),
         file_name: "add".to_string(),
