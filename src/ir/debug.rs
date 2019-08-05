@@ -1,9 +1,9 @@
 use core::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
+use std::env::var;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::ir::*;
-use std::env::var;
 
 pub struct Printer {
     depth: usize,
@@ -42,9 +42,6 @@ impl Printer {
 
     pub fn print_declaration(&mut self, dec: &Arc<Declaration>) {
         match **dec {
-            Declaration::FunctionHeader(ref header) => {
-                self.print_function_header(header);
-            }
             Declaration::Function(ref function) => {
                 self.print_function(function);
             }
@@ -59,24 +56,24 @@ impl Printer {
         self.print(format!("let {}", variable.name));
     }
 
-    pub fn print_function_header(&mut self, header: &Box<FunctionHeader>) {
+    pub fn print_function(&mut self, function: &Box<Function>) {
         let mut joined_args = "".to_string();
-        for (id, (arg, dec)) in (&header.arguments).iter().enumerate() {
+        for (id, (arg, dec)) in (&function.arguments).iter().enumerate() {
             joined_args.push_str(&format!("%{}: {}", arg, dec.name()));
-            if id < header.arguments.len() - 1 {
+            if id < function.arguments.len() - 1 {
                 joined_args.push_str(", ");
             }
         }
 
-        let return_type_name = &header.return_type.name();
+        let return_type_name = &function.return_type.name();
         self.print(format!(
             "fun @{}({}) -> {}:",
-            header.name, joined_args, return_type_name
+            function.name, joined_args, return_type_name
         ));
         self.push();
-        self.print(format!("perms: {:?}", header.permissions));
+        self.print(format!("perms: {:?}", function.permissions));
 
-        for (name, blocks) in header.refinements.iter() {
+        for (name, blocks) in function.refinements.iter() {
             self.print(format!("refinement %{}:", name));
             self.push();
             for (id, block) in blocks.iter().enumerate() {
@@ -85,50 +82,13 @@ impl Printer {
             self.pop();
         }
 
-        self.pop();
-    }
-
-    pub fn print_function(&mut self, function: &Box<Function>) {
-        let mut joined_args = "".to_string();
-        let header = function.get_header();
-        for (id, arg) in (&function.arguments).iter().enumerate() {
-            let mut arg_str = format!("%{}", arg.0);
-
-            // get the type name from the header declaration
-            if let Some(header) = header.clone() {
-                if let Declaration::FunctionHeader(ref header) = *header {
-                    if let Some(header_arg) = header.arguments.get(id) {
-                        arg_str = format!("%{}: {}", arg.0, &header_arg.1.name());
-                    }
-                }
+        if function.blocks.len() > 0 {
+            self.print(format!("body:"));
+            self.push();
+            for (id, block) in function.blocks.iter().enumerate() {
+                self.print_block(id, block);
             }
-
-            joined_args.push_str(&arg_str);
-            if id < function.arguments.len() - 1 {
-                joined_args.push_str(", ");
-            }
-        }
-
-        // get the return type name from the header declaration
-        if let Some(header) = header.clone() {
-            if let Declaration::FunctionHeader(ref header) = *header {
-                let return_type_name = &header.return_type.name();
-                self.print(format!(
-                    "let @{} = ({}) -> {}:",
-                    function.name, joined_args, return_type_name
-                ));
-            } else {
-                self.print(format!("let @{} = ({}):", function.name, joined_args));
-                self.print(format!("; Error: pointer isn't a header declaration!!"))
-            }
-        } else {
-            self.print(format!("let @{}({}):", function.name, joined_args));
-            self.print(format!("; Error: missing pointer to header declaration!!"))
-        }
-
-        self.push();
-        for (id, block) in function.blocks.iter().enumerate() {
-            self.print_block(id, block);
+            self.pop();
         }
         self.pop();
     }

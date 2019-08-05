@@ -173,7 +173,6 @@ impl Module {
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialOrd, PartialEq, Hash)]
 pub enum DeclarationKind {
-    FunctionHeader,
     Function,
     Struct,
     Trait,
@@ -183,7 +182,6 @@ pub enum DeclarationKind {
 
 #[derive(Clone, Debug)]
 pub enum Declaration {
-    FunctionHeader(Box<FunctionHeader>),
     Function(Box<Function>),
     Struct(Box<Struct>),
     Trait(Box<Trait>),
@@ -194,7 +192,6 @@ pub enum Declaration {
 impl Declaration {
     pub fn name(&self) -> String {
         match self {
-            Declaration::FunctionHeader(f) => f.name.clone(),
             Declaration::Function(f) => f.name.clone(),
             Declaration::Struct(s) => s.name.clone(),
             Declaration::Trait(t) => t.name.clone(),
@@ -205,7 +202,6 @@ impl Declaration {
 
     pub fn declaration_kind(&self) -> DeclarationKind {
         match self {
-            Declaration::FunctionHeader(_) => DeclarationKind::FunctionHeader,
             Declaration::Function(_) => DeclarationKind::Function,
             Declaration::Struct(_) => DeclarationKind::Struct,
             Declaration::Trait(_) => DeclarationKind::Trait,
@@ -222,8 +218,7 @@ impl Declaration {
         if kind == DeclarationKind::Type
             && (this == DeclarationKind::Struct
             || this == DeclarationKind::Trait
-            || this == DeclarationKind::Function
-            || this == DeclarationKind::FunctionHeader)
+            || this == DeclarationKind::Function)
         {
             return true;
         }
@@ -232,7 +227,6 @@ impl Declaration {
 
     pub fn get_type(&self) -> Box<Type> {
         match self {
-            Declaration::FunctionHeader(h) => h.get_type(),
             Declaration::Function(f) => f.get_type(),
             Declaration::Struct(s) => s.get_type(),
             Declaration::PrimitiveType(t) => t.clone(),
@@ -246,7 +240,6 @@ impl Declaration {
             || kind == DeclarationKind::Struct
             || kind == DeclarationKind::Trait
             || kind == DeclarationKind::Function
-            || kind == DeclarationKind::FunctionHeader
     }
 
     pub fn is_same_type(&self, declaration: &Declaration) -> bool {
@@ -270,8 +263,6 @@ pub struct Struct {
     pub fields: Arc<RwLock<Vec<DeclarationContainer>>>,
     // Declaration::Trait
     pub traits: Arc<RwLock<Vec<DeclarationContainer>>>,
-    // Declaration::FunctionHeader
-    pub function_headers: Arc<RwLock<Vec<DeclarationContainer>>>,
     // Declaration::Function
     pub functions: Arc<RwLock<Vec<DeclarationContainer>>>,
 }
@@ -285,7 +276,7 @@ impl Struct {
 #[derive(Clone, Debug)]
 pub struct Trait {
     pub name: String,
-    pub function_headers: Vec<FunctionHeader>,
+    pub functions: Vec<Function>,
 }
 
 #[derive(Clone, Debug)]
@@ -306,16 +297,16 @@ impl Display for Permission {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionHeader {
+pub struct Function {
     pub name: String,
-    // assuming declarations are types
     pub arguments: Vec<(String, DeclarationContainer)>,
     pub return_type: DeclarationContainer,
     pub refinements: Vec<(String, Vec<Arc<Mutex<Block>>>)>,
     pub permissions: Vec<Permission>,
+    pub blocks: Vec<Arc<Mutex<Block>>>,
 }
 
-impl FunctionHeader {
+impl Function {
     pub fn get_type(&self) -> Box<types::FunctionType> {
         let mut arguments = Vec::<Box<types::Type>>::with_capacity(self.arguments.len());
 
@@ -325,34 +316,6 @@ impl FunctionHeader {
 
         let result = self.return_type.get_type();
         Box::new(types::FunctionType { arguments, result })
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Function {
-    pub name: String,
-    pub arguments: Vec<(String, Option<DeclarationContainer>)>,
-    // assuming this Declaration is a FunctionHeader
-    pub header: DeclarationContainer,
-    pub blocks: Vec<Arc<Mutex<Block>>>,
-}
-
-impl Function {
-    pub fn get_header(&self) -> Option<Arc<Declaration>> {
-        let mut guard = self.header.0.lock().unwrap();
-        if let Some(ref dec) = *guard {
-            return Some(dec.clone());
-        }
-        None
-    }
-
-    pub fn get_type(&self) -> Box<Type> {
-        let guard = self.header.0.lock().unwrap();
-        if let Some(ref dec) = *guard {
-            dec.get_type()
-        } else {
-            Box::new(types::UnresolvedType::of("FHeadPointerMissing"))
-        }
     }
 }
 
@@ -398,7 +361,7 @@ impl Instruction {
                         let guard = f.declaration.0.lock().unwrap();
                         if let Some(ref dec) = *guard {
                             match **dec {
-                                Declaration::FunctionHeader(ref h) => h.return_type.get_type(),
+                                Declaration::Function(ref h) => h.return_type.get_type(),
                                 _ => Box::new(types::UnresolvedType { name: "UnPointerToFuncBody".to_string() })
                             }
                         } else {

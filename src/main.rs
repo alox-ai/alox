@@ -45,28 +45,18 @@ fn main() {
             },
         )));
 
-    // fun bounded(n: Int32): Bool
+    // fun bounded(n: Int32): Bool {
+    //     return (addWithOverflow(n, INT32_MAX) > 0) && (n < INT32_MAX)
+    // }
     add_program
         .nodes
-        .push(ast::Node::FunctionDeclaration(Box::new(
-            ast::FunctionDeclaration {
+        .push(ast::Node::Function(Box::new(
+            ast::Function {
                 name: "bounded".to_string(),
                 arguments: vec![("n".to_string(), (ast::Path(vec![]), "Int32".to_string()))],
                 return_type: (ast::Path(vec![]), "Bool".to_string()),
                 refinements: vec![],
                 permissions: vec![],
-            },
-        )));
-
-    // let bounded = (n) -> {
-    //     return (addWithOverflow(n, INT32_MAX) > 0) && (n < INT32_MAX)
-    // }
-    add_program
-        .nodes
-        .push(ast::Node::FunctionDefinition(Box::new(
-            ast::FunctionDefinition {
-                name: "bounded".to_string(),
-                arguments: vec![("n".to_string(), None)],
                 statements: vec![ast::Statement::Return(Box::new(ast::Return {
                     expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
                         function: ast::Expression::VariableReference(Box::new(
@@ -113,11 +103,13 @@ fn main() {
         )));
 
     // fun add(x: Int32, y: Int32): Int32
-    //    where (y: bounded(x + y), return: x + y)
+    //    where (y: bounded(x + y), return: x + y) {
+    //     return a + b
+    // }
     add_program
         .nodes
-        .push(ast::Node::FunctionDeclaration(Box::new(
-            ast::FunctionDeclaration {
+        .push(ast::Node::Function(Box::new(
+            ast::Function {
                 name: "add".to_string(),
                 arguments: vec![
                     ("x".to_string(), (ast::Path(vec![]), "Int32".to_string())),
@@ -166,18 +158,6 @@ fn main() {
                     ),
                 ],
                 permissions: vec![],
-            },
-        )));
-
-    // let add = (a, b) -> {
-    //     return a + b
-    // }
-    add_program
-        .nodes
-        .push(ast::Node::FunctionDefinition(Box::new(
-            ast::FunctionDefinition {
-                name: "add".to_string(),
-                arguments: vec![("a".to_string(), None), ("b".to_string(), None)],
                 statements: vec![ast::Statement::Return(Box::new(ast::Return {
                     expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
                         function: ast::Expression::VariableReference(Box::new(
@@ -203,20 +183,7 @@ fn main() {
         nodes: vec![],
     };
 
-    // fun main() +IO
-    main_program
-        .nodes
-        .push(ast::Node::FunctionDeclaration(Box::new(
-            ast::FunctionDeclaration {
-                name: "main".to_string(),
-                arguments: vec![],
-                return_type: (ast::Path(vec![]), "Void".to_string()),
-                refinements: vec![],
-                permissions: vec!["IO".to_string()],
-            },
-        )));
-
-    // let main = () -> {
+    // fun main() +IO {
     //     let a = INT32_MAX - 2
     //     let b = 3
     //     // compile time error!
@@ -225,10 +192,13 @@ fn main() {
     // }
     main_program
         .nodes
-        .push(ast::Node::FunctionDefinition(Box::new(
-            ast::FunctionDefinition {
+        .push(ast::Node::Function(Box::new(
+            ast::Function {
                 name: "main".to_string(),
                 arguments: vec![],
+                return_type: (ast::Path(vec![]), "Void".to_string()),
+                refinements: vec![],
+                permissions: vec!["IO".to_string()],
                 statements: vec![
                     ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
                         name: "a".to_string(),

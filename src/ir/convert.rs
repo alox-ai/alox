@@ -23,63 +23,15 @@ impl ir::Compiler {
                 ast::Node::Struct(s) => {
                     let mut fields = Vec::with_capacity(s.fields.len());
                     let mut traits = Vec::with_capacity(s.traits.len());
-                    let mut function_headers_unwrapped =
-                        Vec::with_capacity(s.function_declarations.len());
-                    let mut functions = Vec::with_capacity(s.function_definitions.len());
+                    let mut functions = Vec::with_capacity(s.functions.len());
 
-                    for f in s.function_declarations {
+                    for f in s.functions {
                         let now = Instant::now();
-                        let function_header = self.generate_ir_function_header(
+
+                        let function = self.generate_ir_function(
                             current_path,
                             &completed_declarations,
                             &f,
-                        );
-                        function_headers_unwrapped.push(Arc::new(function_header));
-                        println!(
-                            "convert function_declaration: {} {:?}",
-                            f.name,
-                            now.elapsed()
-                        );
-                    }
-
-                    for f in s.function_definitions {
-                        let now = Instant::now();
-                        let mut header: Option<Arc<ir::Declaration>> = None;
-                        for declaration in function_headers_unwrapped.iter() {
-                            match *declaration.clone() {
-                                ir::Declaration::FunctionHeader(ref f) => {
-                                    if f.name == name {
-                                        header = Some(declaration.clone());
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                        if let None = header {
-                            for declaration in completed_declarations.iter() {
-                                match *declaration.clone() {
-                                    ir::Declaration::FunctionHeader(ref f) => {
-                                        if f.name == name {
-                                            header = Some(declaration.clone());
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-
-                        let header_container = if let None = header {
-                            // we haven't converted the container yet so we need to put it in the resolution queue
-                            self.resolve(combined_path.clone(), f.name.clone(), Some(DeclarationKind::FunctionHeader))
-                        } else {
-                            ir::DeclarationContainer(Arc::new(Mutex::new(header)))
-                        };
-
-                        let function = self.generate_ir_function_definition(
-                            current_path,
-                            &completed_declarations,
-                            &f,
-                            header_container,
                         );
                         functions.push(ir::DeclarationContainer::from(function));
                         println!(
@@ -89,62 +41,21 @@ impl ir::Compiler {
                         );
                     }
 
-                    // wrap headers
-                    let function_headers: Vec<ir::DeclarationContainer> = function_headers_unwrapped
-                        .iter_mut()
-                        .map(|f| ir::DeclarationContainer(Arc::new(Mutex::new(Some((*f).clone())))))
-                        .collect();
-
                     let strct = ir::Struct {
                         name: s.name,
                         fields: Arc::new(RwLock::new(fields)),
                         traits: Arc::new(RwLock::new(traits)),
-                        function_headers: Arc::new(RwLock::new(function_headers)),
                         functions: Arc::new(RwLock::new(functions)),
                     };
                     completed_declarations.push(Arc::new(ir::Declaration::Struct(Box::new(strct))));
                 }
                 ast::Node::Trait(t) => {}
-
-                ast::Node::FunctionDeclaration(f) => {
+                ast::Node::Function(f) => {
                     let now = Instant::now();
-                    let function_header = self.generate_ir_function_header(
+                    let function = self.generate_ir_function(
                         current_path,
                         &completed_declarations,
                         f.as_ref(),
-                    );
-                    completed_declarations.push(Arc::new(function_header));
-                    println!(
-                        "convert function_declaration: {} {:?}",
-                        f.name,
-                        now.elapsed()
-                    );
-                }
-                ast::Node::FunctionDefinition(f) => {
-                    let now = Instant::now();
-                    let mut header: Option<Arc<ir::Declaration>> = None;
-                    for declaration in completed_declarations.iter() {
-                        match *declaration.clone() {
-                            ir::Declaration::FunctionHeader(ref f) => {
-                                if f.name == name {
-                                    header = Some(declaration.clone());
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    let header_container = if let None = header {
-                        // we haven't converted the container yet so we need to put it in the resolution queue
-                        self.resolve(combined_path.clone(), f.name.clone(), Some(DeclarationKind::FunctionHeader))
-                    } else {
-                        ir::DeclarationContainer(Arc::new(Mutex::new(header)))
-                    };
-
-                    let function = self.generate_ir_function_definition(
-                        current_path,
-                        &completed_declarations,
-                        f.as_ref(),
-                        header_container,
                     );
                     completed_declarations.push(Arc::new(function));
                     println!(
@@ -164,15 +75,42 @@ impl ir::Compiler {
         }
     }
 
-    pub fn generate_ir_function_header(
+    pub fn generate_ir_function(
         &self,
         current_path: &ast::Path,
         declarations: &Vec<Arc<ir::Declaration>>,
-        f: &ast::FunctionDeclaration,
+        f: &ast::Function,
     ) -> ir::Declaration {
         let name = f.name.clone();
-        let mut arguments: Vec<(String, ir::DeclarationContainer)> =
-            Vec::with_capacity(f.arguments.len());
+
+        // get the parameters from the function header
+        let mut param_names = vec![];
+        for (name, dec) in &f.arguments {
+            param_names.push(name.clone());
+        }
+
+        let mut block_builder = BlockBuilder::new();
+        let mut lvt = LocalVariableTable::new_with_params(param_names);
+
+        for statement in f.statements.iter() {
+            self.generate_ir_statement(
+                current_path,
+                declarations,
+                &mut lvt,
+                &mut block_builder,
+                statement,
+            );
+        }
+
+        let blocks = block_builder.blocks;
+        let mut blocks_wrapped = Vec::with_capacity(blocks.len());
+        for b in blocks {
+            // this might come back to bite me
+            if b.instructions.len() > 0 {
+                blocks_wrapped.push(Arc::new(Mutex::new(b)));
+            }
+        }
+        let mut arguments = Vec::with_capacity(f.arguments.len());
         for (name, type_path) in f.arguments.iter() {
             let typ = self.resolve(
                 type_path.0.clone(),
@@ -181,11 +119,6 @@ impl ir::Compiler {
             );
             arguments.push((name.clone(), typ));
         }
-        let return_type = self.resolve(
-            f.return_type.0.clone(),
-            f.return_type.1.clone(),
-            Some(ir::DeclarationKind::Type),
-        );
 
         // generate blocks for refinements
         let mut refinements = vec![];
@@ -218,72 +151,20 @@ impl ir::Compiler {
             refinements.push((name.clone(), blocks));
         }
 
+        let return_type = self.resolve(
+            f.return_type.0.clone(),
+            f.return_type.1.clone(),
+            Some(ir::DeclarationKind::Type),
+        );
+
         let permissions = vec![];
-        ir::Declaration::FunctionHeader(Box::new(ir::FunctionHeader {
+
+        ir::Declaration::Function(Box::new(ir::Function {
             name,
             arguments,
             return_type,
             refinements,
             permissions,
-        }))
-    }
-
-    pub fn generate_ir_function_definition(
-        &self,
-        current_path: &ast::Path,
-        declarations: &Vec<Arc<ir::Declaration>>,
-        f: &ast::FunctionDefinition,
-        header: DeclarationContainer,
-    ) -> ir::Declaration {
-        let name = f.name.clone();
-
-        // get the parameters from the function header
-        let mut param_names = vec![];
-        for (name, dec) in &f.arguments {
-            param_names.push(name.clone());
-        }
-
-        let mut block_builder = BlockBuilder::new();
-        let mut lvt = LocalVariableTable::new_with_params(param_names);
-
-        for statement in f.statements.iter() {
-            self.generate_ir_statement(
-                current_path,
-                declarations,
-                &mut lvt,
-                &mut block_builder,
-                statement,
-            );
-        }
-
-        let blocks = block_builder.blocks;
-        let mut blocks_wrapped = Vec::with_capacity(blocks.len());
-        for b in blocks {
-            // this might come back to bite me
-            if b.instructions.len() > 0 {
-                blocks_wrapped.push(Arc::new(Mutex::new(b)));
-            }
-        }
-
-        let mut arguments: Vec<(String, Option<ir::DeclarationContainer>)> =
-            Vec::with_capacity(f.arguments.len());
-        for (name, type_path) in f.arguments.iter() {
-            if let Some(type_path) = type_path {
-                let typ = self.resolve(
-                    type_path.0.clone(),
-                    type_path.1.clone(),
-                    Some(ir::DeclarationKind::Type),
-                );
-                arguments.push((name.clone(), Some(typ)));
-            } else {
-                arguments.push((name.clone(), None));
-            }
-        }
-
-        ir::Declaration::Function(Box::new(ir::Function {
-            name,
-            arguments,
-            header,
             blocks: blocks_wrapped,
         }))
     }
@@ -331,7 +212,7 @@ impl ir::Compiler {
                     lvt,
                     block_builder.current_block(),
                     &call.function,
-                    Some(ir::DeclarationKind::FunctionHeader),
+                    Some(ir::DeclarationKind::Function),
                 );
                 let mut arguments = Vec::with_capacity(call.arguments.len());
                 for argument in call.arguments.iter() {
@@ -377,7 +258,7 @@ impl ir::Compiler {
                     lvt,
                     block,
                     &call.function,
-                    Some(ir::DeclarationKind::FunctionHeader),
+                    Some(ir::DeclarationKind::Function),
                 );
                 let mut arguments = Vec::with_capacity(call.arguments.len());
                 for argument in call.arguments.iter() {

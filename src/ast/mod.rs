@@ -29,8 +29,7 @@ pub struct Program {
 pub enum Node {
     Struct(Box<Struct>),
     Trait(Box<Trait>),
-    FunctionDeclaration(Box<FunctionDeclaration>),
-    FunctionDefinition(Box<FunctionDefinition>),
+    Function(Box<Function>),
     VariableDeclaration(Box<VariableDeclaration>),
 }
 
@@ -64,7 +63,7 @@ pub enum Statement {
 #[derive(Clone, Debug)]
 pub struct Trait {
     pub name: String,
-    pub function_declarations: Vec<FunctionDeclaration>,
+    pub function_declarations: Vec<Function>,
 }
 
 #[derive(Clone, Debug)]
@@ -72,23 +71,16 @@ pub struct Struct {
     pub name: String,
     pub traits: Vec<String>,
     pub fields: Vec<VariableDeclaration>,
-    pub function_declarations: Vec<FunctionDeclaration>,
-    pub function_definitions: Vec<FunctionDefinition>,
+    pub functions: Vec<Function>,
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionDeclaration {
+pub struct Function {
     pub name: String,
     pub arguments: Vec<(String, (Path, String))>,
     pub return_type: (Path, String),
     pub refinements: Vec<(String, Expression)>,
     pub permissions: Vec<String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct FunctionDefinition {
-    pub name: String,
-    pub arguments: Vec<(String, Option<(Path, String)>)>,
     pub statements: Vec<Statement>,
 }
 

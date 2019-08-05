@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use logos::{Lexer, Logos, Source};
+use logos::internal::LexerInternal;
 
 use lexer::Token;
 
@@ -63,9 +64,9 @@ pub fn parse<'a>(path: Path, module_name: String, code: String) -> Option<Progra
             // function header
             lexer.advance();
 
-            match parse_function_declaration(&mut lexer) {
+            match parse_function(&mut lexer) {
                 Ok(dec) => {
-                    program.nodes.push(Node::FunctionDeclaration(Box::new(dec)));
+                    program.nodes.push(Node::Function(Box::new(dec)));
                 }
                 Err(err) => {
                     let err = err.to_string(lexer.source);
@@ -73,6 +74,9 @@ pub fn parse<'a>(path: Path, module_name: String, code: String) -> Option<Progra
                     return None;
                 }
             }
+        } else if lexer.token == Token::Def {
+            // function definition
+            lexer.advance();
         } else {
             lexer.advance();
         }
@@ -81,7 +85,7 @@ pub fn parse<'a>(path: Path, module_name: String, code: String) -> Option<Progra
     Some(program)
 }
 
-pub fn parse_function_declaration(lexer: &mut Lexer<Token, &str>) -> Result<FunctionDeclaration, ParserError> {
+pub fn parse_function(lexer: &mut Lexer<Token, &str>) -> Result<Function, ParserError> {
     // fun main
     if lexer.token != Token::Identifier { return ParserError::from(lexer, "Expected function name"); }
     let function_name = lexer.slice().to_string();
@@ -92,7 +96,7 @@ pub fn parse_function_declaration(lexer: &mut Lexer<Token, &str>) -> Result<Func
     lexer.advance();
 
     // fun main(x: a::a::a, y: b::b::b
-    let mut args = vec![];
+    let mut arguments = vec![];
     if lexer.token == Token::Identifier {
         while lexer.token == Token::Identifier {
             let arg_name = lexer.slice().to_string();
@@ -102,7 +106,7 @@ pub fn parse_function_declaration(lexer: &mut Lexer<Token, &str>) -> Result<Func
             if lexer.token != Token::Identifier { return ParserError::from(lexer, "Expected type name after colon"); }
             let arg_type = parse_path_ident(lexer);
             match arg_type {
-                Some(arg_type) => args.push((arg_name, arg_type)),
+                Some(arg_type) => arguments.push((arg_name, arg_type)),
                 None => return ParserError::from(lexer, "Expected type name after colon")
             }
             if lexer.token == Token::Comma {
@@ -125,23 +129,24 @@ pub fn parse_function_declaration(lexer: &mut Lexer<Token, &str>) -> Result<Func
     }
 
     // fun main(x: a::a::a, y: b::b::b): c::c::c
-    let ret_type: (Path, String);
+    let return_type: (Path, String);
     if lexer.token == Token::Colon {
         lexer.advance();
         if lexer.token != Token::Identifier { return ParserError::from(lexer, "Expected return type after colon"); }
         let ret_type_o = parse_path_ident(lexer);
         if let None = ret_type_o { return ParserError::from(lexer, "Expected return type after colon"); }
-        ret_type = ret_type_o.unwrap();
+        return_type = ret_type_o.unwrap();
     } else {
-        ret_type = (Path::of(""), "Void".to_string());
+        return_type = (Path::of(""), "Void".to_string());
     }
 
-    Ok(FunctionDeclaration {
+    Ok(Function {
         name: function_name,
-        arguments: args,
-        return_type: ret_type,
+        arguments,
+        return_type,
         refinements: vec![],
         permissions: vec![],
+        statements: vec![],
     })
 }
 
