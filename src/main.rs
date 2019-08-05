@@ -16,8 +16,7 @@ mod ir;
 
 fn main() {
     let test = "\
-    fun main(x: a::aa::A, y: b::bb::B, z: c::cc::C): d::dd::D
-    def main = (x, y, z) -> {
+    fun main(x: a::aa::A, y: b::bb::B, z: c::cc::C): d::dd::D {
         let a = INT32_MAX - 2
         let b = 3
         let c = add(a, b)
