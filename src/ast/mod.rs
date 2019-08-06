@@ -87,7 +87,7 @@ pub struct Function {
 #[derive(Clone, Debug)]
 pub struct VariableDeclaration {
     pub name: String,
-    pub type_name: Option<String>,
+    pub type_name: Option<(Path, String)>,
     pub initial_expression: Expression,
 }
 

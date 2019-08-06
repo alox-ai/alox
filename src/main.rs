@@ -17,10 +17,9 @@ mod ir;
 fn main() {
     let test = "\
     fun main(x: a::aa::A, y: b::bb::B, z: c::cc::C): d::dd::D {
-        let a = INT32_MAX - 2
-        let b = 3
-        let c = add(a, b)
-        println(c)
+        let a = 3
+        let b = a
+        return b
     }".to_string();
     let mut parsed_program = parser::parse(ast::Path::of("test"), "parsed".to_string(), test);
 
@@ -37,7 +36,7 @@ fn main() {
         .push(ast::Node::VariableDeclaration(Box::new(
             ast::VariableDeclaration {
                 name: "INT32_MAX".to_string(),
-                type_name: Some("Int32".to_string()),
+                type_name: Some((ast::Path(vec![]), "Int32".to_string())),
                 initial_expression: ast::Expression::IntegerLiteral(Box::new(ast::IntegerLiteral(
                     2_147_483_647,
                 ))),

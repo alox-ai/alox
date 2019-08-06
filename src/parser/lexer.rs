@@ -2,6 +2,8 @@ use std::ops::Range;
 
 use logos::Logos;
 
+use crate::parser::ParserError;
+
 #[derive(Logos, Debug, PartialEq, Clone)]
 pub enum Token {
     // required by Logos
@@ -9,10 +11,10 @@ pub enum Token {
     #[error] Error,
 
     // keywords
+    #[token = "return"] Return,
     #[token = "let"] Let,
     #[token = "var"] Var,
     #[token = "fun"] Fun,
-    #[token = "def"] Def,
 
     // symbols
     #[token = "->"] ThinArrow,
@@ -34,6 +36,7 @@ pub enum Token {
     #[token = "/"] Slash,
     #[token = ","] Comma,
     #[token = ":"] Colon,
+    #[token = ";"] Semicolon,
 
     #[regex = "[0-9]+"] IntegerLiteral,
     #[regex = "[a-zA-Z][a-zA-Z0-9_]*"] Identifier,
@@ -96,5 +99,35 @@ impl<'a> Lexer<'a> {
             self.past_ranges.push(self.inner.range());
             self.buffer.get(ahead - 1).unwrap()
         }
+    }
+
+    pub fn peek_is(&mut self, ahead: usize, token: Token) -> bool {
+        assert!(ahead > 0, "use Lexer::has() instead");
+        self.peek(ahead) == &token
+    }
+
+    /// Create a parser error if the current token isn't the expected token
+    pub fn expect(&mut self, token: Token, error: &str) -> Result<(), ParserError> {
+        if self.token() != &token {
+            ParserError::from(self, error)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn unexpected<T>(&mut self) -> Result<T, ParserError> {
+        ParserError::from(self, "Unexpected token")
+    }
+
+    /// Expect a token and advance if it is present
+    pub fn skip(&mut self, token: Token, error: &str) -> Result<(), ParserError> {
+        self.expect(token, error)?;
+        self.advance();
+        Ok(())
+    }
+
+    /// Compares the current token with the one provided
+    pub fn has(&self, token: Token) -> bool {
+        self.token() == &token
     }
 }
