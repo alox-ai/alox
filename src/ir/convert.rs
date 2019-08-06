@@ -12,7 +12,6 @@ impl ir::Compiler {
         // args for module
         let name = program.file_name;
         let path = program.path;
-        let combined_path = path.clone().append(name.clone());
         let current_path = &path.append(name.clone());
         let mut completed_declarations: Vec<Arc<ir::Declaration>> = vec![];
 
@@ -321,9 +320,12 @@ impl ir::Compiler {
                         if let Some(found_dec) = found_dec {
                             found_dec
                         } else {
-                            // TODO: add to resolver?
+                            let declaration = self.resolve(current_path.clone(), name.clone(), declaration_context);
                             Arc::new(Mutex::new(ir::Instruction::DeclarationReference(Box::new(
-                                ir::DeclarationReference::blank(name),
+                                ir::DeclarationReference {
+                                    name: (Some(current_path.clone()), name),
+                                    declaration,
+                                },
                             ))))
                         }
                     }

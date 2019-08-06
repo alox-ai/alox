@@ -116,7 +116,7 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn unexpected<T>(&mut self) -> Result<T, ParserError> {
-        ParserError::from(self, "Unexpected token")
+        ParserError::from(self, &format!("Unexpected token {:?}", self.token()))
     }
 
     /// Expect a token and advance if it is present

@@ -1,3 +1,4 @@
+use std::env::var;
 use std::ops::Range;
 
 use logos::{Logos, Source};
@@ -139,9 +140,7 @@ pub fn parse_function(lexer: &mut Lexer) -> Result<Function, ParserError> {
     } else if lexer.has(Token::LeftBrace) {
         lexer.advance();
         while !lexer.has(Token::RightBrace) {
-            let statement = parse_statement(lexer)?;
-            dbg!(statement.clone());
-            statements.push(statement);
+            statements.push(parse_statement(lexer)?);
         }
         lexer.advance();
     } else {
@@ -190,7 +189,6 @@ pub fn parse_statement(lexer: &mut Lexer) -> Result<Statement, ParserError> {
             initial_expression,
         })));
     }
-    println!("couldn't parse statement?");
     lexer.unexpected()
 }
 
@@ -200,12 +198,28 @@ pub fn parse_expression(lexer: &mut Lexer) -> Result<Expression, ParserError> {
         lexer.advance();
         return Ok(Expression::IntegerLiteral(Box::new(IntegerLiteral(num))));
     } else if lexer.has(Token::Identifier) {
-        let variable_reference = VariableReference::from_str(lexer.slice());
-        lexer.advance();
-        return Ok(Expression::VariableReference(Box::new(variable_reference)));
+        let path_ident = parse_path_ident(lexer).unwrap();
+        let path = if (path_ident.0).0.len() > 0 { Some(path_ident.0) } else { None };
+        let variable_reference = Expression::VariableReference(Box::new(VariableReference { path, name: path_ident.1 }));
+        if lexer.has(Token::LeftParen) {
+            // function call
+            lexer.advance();
+            let mut arguments = vec![];
+            while !lexer.has(Token::RightParen) {
+                arguments.push(parse_expression(lexer)?);
+                if lexer.has(Token::RightParen) { break; }
+                lexer.skip(Token::Comma, "Expected comma between function call arguments")?;
+            }
+            lexer.advance();
+            return Ok(Expression::FunctionCall(Box::new(FunctionCall {
+                function: variable_reference,
+                arguments,
+            })));
+        } else {
+            return Ok(variable_reference);
+        }
     }
-    lexer.advance();
-    Ok(Expression::IntegerLiteral(Box::new(IntegerLiteral(1))))
+    lexer.unexpected()
 }
 
 pub fn parse_path_ident(lexer: &mut Lexer) -> Option<(Path, String)> {

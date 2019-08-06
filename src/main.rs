@@ -18,8 +18,12 @@ fn main() {
     let test = "\
     fun main(x: a::aa::A, y: b::bb::B, z: c::cc::C): d::dd::D {
         let a = 3
-        let b = a
+        let b = test(a, 2)
         return b
+    }
+
+    fun test(a: Int32): Int32 {
+        return a
     }".to_string();
     let mut parsed_program = parser::parse(ast::Path::of("test"), "parsed".to_string(), test);
 
@@ -295,6 +299,6 @@ fn main() {
 
     let resolutions = compiler.resolutions_needed.read().unwrap();
     for needed_resolution in resolutions.iter() {
-        dbg!(needed_resolution);
+        println!("{:?} {:?} {:?}", needed_resolution.0, needed_resolution.1, needed_resolution.2);
     }
 }

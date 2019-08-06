@@ -89,9 +89,12 @@ impl Compiler {
             if needed_resolution.0 == path {
                 let mut data = (needed_resolution.3).0.lock().unwrap();
                 let declaration = module.resolve(needed_resolution.1.clone(), needed_resolution.2);
-                *data = declaration.clone();
-                // mark this resolution as completed
-                completed_resolutions.push(i);
+                // we want to replace the data only if we have some
+                if let Some(_) = declaration {
+                    *data = declaration;
+                    // mark this resolution as completed
+                    completed_resolutions.push(i);
+                }
             }
         }
         drop(resolutions);
@@ -153,7 +156,6 @@ impl Module {
     }
 
     pub fn resolve(&self, name: String, kind: Option<DeclarationKind>) -> Option<Arc<Declaration>> {
-        println!("module {} resolving {} ", self.name, name);
         if let Some(kind) = kind {
             for declaration in self.declarations.iter() {
                 if declaration.is_declaration_kind(kind) && declaration.name() == name {
