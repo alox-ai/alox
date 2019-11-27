@@ -27,6 +27,7 @@ pub struct Program {
 
 #[derive(Clone, Debug)]
 pub enum Node {
+    Actor(Box<Actor>),
     Struct(Box<Struct>),
     Trait(Box<Trait>),
     Function(Box<Function>),
@@ -75,12 +76,25 @@ pub struct Struct {
 }
 
 #[derive(Clone, Debug)]
+pub struct Actor {
+    pub name: String,
+    pub fields: Vec<VariableDeclaration>,
+    pub functions: Vec<Function>,
+    pub behaviours: Vec<Behaviour>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Function {
     pub name: String,
     pub arguments: Vec<(String, (Path, String))>,
     pub return_type: (Path, String),
-    pub refinements: Vec<(String, Expression)>,
-    pub permissions: Vec<String>,
+    pub statements: Vec<Statement>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Behaviour {
+    pub name: String,
+    pub arguments: Vec<(String, (Path, String))>,
     pub statements: Vec<Statement>,
 }
 

@@ -151,8 +151,6 @@ pub fn parse_function(lexer: &mut Lexer) -> Result<Function, ParserError> {
         name: function_name,
         arguments,
         return_type,
-        refinements: vec![],
-        permissions: vec![],
         statements,
     })
 }

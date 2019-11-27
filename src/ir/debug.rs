@@ -71,16 +71,6 @@ impl Printer {
             function.name, joined_args, return_type_name
         ));
         self.push();
-        self.print(format!("perms: {:?}", function.permissions));
-
-        for (name, blocks) in function.refinements.iter() {
-            self.print(format!("refinement %{}:", name));
-            self.push();
-            for (id, block) in blocks.iter().enumerate() {
-                self.print_block(id, block);
-            }
-            self.pop();
-        }
 
         if function.blocks.len() > 0 {
             self.print(format!("body:"));

@@ -11,10 +11,14 @@ pub enum Token {
     #[error] Error,
 
     // keywords
+    #[token = "actor"] Actor,
+    #[token = "struct"] Struct,
+    #[token = "trait"] Trait,
+    #[token = "behave"] Behave,
+    #[token = "fun"] Fun,
     #[token = "return"] Return,
     #[token = "let"] Let,
     #[token = "var"] Var,
-    #[token = "fun"] Fun,
 
     // symbols
     #[token = "->"] ThinArrow,

@@ -1,10 +1,16 @@
 # alox
 
-> Systems Programming meets Verified Programming
+> GPU Accelerated, Distributed, Actor Model Language
+
+Goals:
+
+* Have code running on the GPU and CPU
+* Have code running across many machines
+* Use the actor model for concurrency
 
 This is very much a _Work In Progress_, nothing works yet.
 
-Here's a roadmap:
+Roadmap:
 
 * Frontend
     * [x] Lexer
@@ -18,19 +24,26 @@ Here's a roadmap:
     * [ ] Passes to validate things
 * Error messages
     * [x] Parser error messages
-    * [ ] Missing declaration messages
     * [ ] Validation messages
 * Backend
-    * [ ] Look at [CraneLift](https://github.com/CraneStation/CraneLift)
-    * [ ] LLVM ([inkwell](https://github.com/TheDan64/inkwell) or [llvm-sys](https://crates.io/crates/llvm-sys)
+    * Normal Backends
+        * [ ] Look at [CraneLift](https://github.com/CraneStation/CraneLift)
+        * [ ] LLVM ([inkwell](https://github.com/TheDan64/inkwell) or [llvm-sys](https://crates.io/crates/llvm-sys)
+    * GPU Backends
+        * [ ] Dynamically figure out the best backend to use
+        * [ ] SPIR-V ([rspirv](https://github.com/gfx-rs/rspirv))
+        * [ ] CUDA ([libcuda](https://github.com/peterhj/libcuda]))
+        * [ ] OpenCL (for older platforms?) ([ocl](https://github.com/cogciprocate/ocl))
+* Runtime
+    * [ ] Schedulers
+    * [ ] Cross-node communication
+    * [ ] GC for actors?
 * Really dig into semantics
 ---
 
 Language Ideas
 
-* Pure code by default
-    * Allows for compile time code execution
-    * Permission based system - `+IO, +Syscall, +MutateArgs`
+* Compile time code execution
 * Strong type system
     * Algebraic Data Types
     * Refinements on function arguments
@@ -38,65 +51,38 @@ Language Ideas
 * Automatic Versioning
     * Enforce public APIs
 * Clean syntax
-* **Concurrent compiler pipeline**
+* Concurrent compiler pipeline
 
-```rust
-import std::io
-
-let INT32_MAX: Int32 = 2_147_483_647
-
-fun bounded(n: Int32): Bool {
-    return (addWithOverflow(n, INT32_MAX) > 0) && (n < INT32_MAX)
-}
-
-// add function that can't overflow at runtime
-// 'bounded' can be used because it is a pure function
-fun add(x: Int32, y: Int32): Int32
-  where (y: bounded(x + y), return: x + y)  {
-    return a + b
-}
-
-import std.io
-
-// println requires the caller to be annotated with +IO
-fun main() +IO {
-    let a = INT32_MAX - 2
-    let b = 3
-    // compile time error!
-    let c = add(a, b)
-    std::io::println(c)
-}
-```
-
-```rust
-import std::io
-
-trait Action {
-    fun action(): Int32;
-    fun otherAction(): Int32 +MutateSelf;
-}
-
-struct Container : Action {
-    let x: Int32
-    let y: Int32
-
-    fun action(): Int32 {
-        return self.x + self.y
-    }
-    
-    // this function is allowed to mutate itself
-    fun otherAction(): Int32 +MutateSelf -> {
-        self.x = self.x + 1
-        return self.x
+```pony
+actor A {
+    behave ping(n: Int32, b: &B) {
+        b.pong(n, &this)
     }
 }
 
-fun main() +IO {
-    let container: Action = Container { x: 1, y: 2 }
-    container.action()
-    container.otherAction()
-    std::io::println()
+actor B {
+    behave pong(n: Int32, a: &A) {
+        let x = n & 0xF0 >> 4
+        let y = n & 0x0F
+        let arr = [x, y]
+        let newArr = process(arr)
+        let z = (newArr[0] << 4) | newArr[1]
+        a.ping(z, &this)
+    }
+
+    fun process(arr: &mut [Int32]) {
+        for (x in arr) {
+            x *= 17 + (2 * x)
+        }
+    }
+}
+
+actor Main {
+    behave main() {
+        let n = 2
+        let a = new A()
+        let b = new B()
+        a.ping(n, &b)
+    }
 }
 ```
-
-Inspired by _Rust, Liquid Haskell, & many more_.

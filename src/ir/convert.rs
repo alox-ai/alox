@@ -19,6 +19,7 @@ impl ir::Compiler {
         for mut node in program.nodes {
             match node {
                 // todo
+                ast::Node::Actor(a) => {}
                 ast::Node::Struct(s) => {
                     let mut fields = Vec::with_capacity(s.fields.len());
                     let mut traits = Vec::with_capacity(s.traits.len());
@@ -119,51 +120,16 @@ impl ir::Compiler {
             arguments.push((name.clone(), typ));
         }
 
-        // generate blocks for refinements
-        let mut refinements = vec![];
-        for (name, expression) in &f.refinements {
-            let mut block_builder = BlockBuilder::new();
-            let mut params = vec![];
-            for (name, typ) in &f.arguments {
-                params.push(name.clone());
-            }
-            let mut lvt = LocalVariableTable::new_with_params(params);
-            let expr_ins = self.generate_ir_expression(
-                current_path,
-                declarations,
-                &mut lvt,
-                block_builder.current_block(),
-                &expression,
-                None,
-            );
-
-            // return the final expression instruction at the end of the block
-            let ret_ins = Arc::new(Mutex::new(ir::Instruction::Return(Box::new(ir::Return {
-                instruction: expr_ins,
-            }))));
-            block_builder.add_instruction(ret_ins);
-
-            let mut blocks = Vec::with_capacity(block_builder.blocks.len());
-            for block in block_builder.blocks {
-                blocks.push(Arc::new(Mutex::new(block)));
-            }
-            refinements.push((name.clone(), blocks));
-        }
-
         let return_type = self.resolve(
             f.return_type.0.clone(),
             f.return_type.1.clone(),
             Some(ir::DeclarationKind::Type),
         );
 
-        let permissions = vec![];
-
         ir::Declaration::Function(Box::new(ir::Function {
             name,
             arguments,
             return_type,
-            refinements,
-            permissions,
             blocks: blocks_wrapped,
         }))
     }

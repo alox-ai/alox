@@ -24,7 +24,23 @@ fn main() {
 
     fun test(a: Int32): Int32 {
         return a
-    }".to_string();
+    }
+
+    struct X {
+        x: Int32
+    }
+
+    actor A {
+        behave foo(a: Int32) {
+            let h = 1
+            let i = bar(h)
+        }
+
+        fun bar(a: Int32): Int32 {
+            return a + 2
+        }
+    }
+    ".to_string();
     let mut parsed_program = parser::parse(ast::Path::of("test"), "parsed".to_string(), test);
 
     let mut add_program = ast::Program {
@@ -57,8 +73,6 @@ fn main() {
                 name: "bounded".to_string(),
                 arguments: vec![("n".to_string(), (ast::Path(vec![]), "Int32".to_string()))],
                 return_type: (ast::Path(vec![]), "Bool".to_string()),
-                refinements: vec![],
-                permissions: vec![],
                 statements: vec![ast::Statement::Return(Box::new(ast::Return {
                     expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
                         function: ast::Expression::VariableReference(Box::new(
@@ -118,48 +132,6 @@ fn main() {
                     ("y".to_string(), (ast::Path(vec![]), "Int32".to_string())),
                 ],
                 return_type: (ast::Path(vec![]), "Int32".to_string()),
-                refinements: vec![
-                    (
-                        "y".to_string(),
-                        ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                            function: ast::Expression::VariableReference(Box::new(
-                                ast::VariableReference::from_str("bounded"),
-                            )),
-                            arguments: vec![ast::Expression::FunctionCall(Box::new(
-                                ast::FunctionCall {
-                                    function: ast::Expression::VariableReference(Box::new(
-                                        ast::VariableReference::from_str("+"),
-                                    )),
-                                    arguments: vec![
-                                        ast::Expression::VariableReference(Box::new(
-                                            ast::VariableReference::from_str("x"),
-                                        )),
-                                        ast::Expression::VariableReference(Box::new(
-                                            ast::VariableReference::from_str("y"),
-                                        )),
-                                    ],
-                                },
-                            ))],
-                        })),
-                    ),
-                    (
-                        "return".to_string(),
-                        ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
-                            function: ast::Expression::VariableReference(Box::new(
-                                ast::VariableReference::from_str("+"),
-                            )),
-                            arguments: vec![
-                                ast::Expression::VariableReference(Box::new(
-                                    ast::VariableReference::from_str("x"),
-                                )),
-                                ast::Expression::VariableReference(Box::new(
-                                    ast::VariableReference::from_str("y"),
-                                )),
-                            ],
-                        })),
-                    ),
-                ],
-                permissions: vec![],
                 statements: vec![ast::Statement::Return(Box::new(ast::Return {
                     expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
                         function: ast::Expression::VariableReference(Box::new(
@@ -199,8 +171,6 @@ fn main() {
                 name: "main".to_string(),
                 arguments: vec![],
                 return_type: (ast::Path(vec![]), "Void".to_string()),
-                refinements: vec![],
-                permissions: vec!["IO".to_string()],
                 statements: vec![
                     ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
                         name: "a".to_string(),

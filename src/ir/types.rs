@@ -5,7 +5,7 @@ pub trait Type: Send + Sync {
     fn name(&self) -> String;
 }
 
-impl Debug for Type {
+impl Debug for dyn Type {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}", self.name())?;
         Ok(())
@@ -40,8 +40,8 @@ impl Type for StructType {
 }
 
 pub struct FunctionType {
-    pub arguments: Vec<Box<Type>>,
-    pub result: Box<Type>,
+    pub arguments: Vec<Box<dyn Type>>,
+    pub result: Box<dyn Type>,
 }
 
 impl Type for FunctionType {

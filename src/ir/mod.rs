@@ -48,7 +48,7 @@ impl DeclarationContainer {
         String::from("notfound")
     }
 
-    pub fn get_type(&self) -> Box<Type> {
+    pub fn get_type(&self) -> Box<dyn Type> {
         let guard = self.0.lock().unwrap();
         if let Some(ref dec) = *guard {
             return dec.get_type();
@@ -175,7 +175,9 @@ impl Module {
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialOrd, PartialEq, Hash)]
 pub enum DeclarationKind {
+    Behaviour,
     Function,
+    Actor,
     Struct,
     Trait,
     Variable,
@@ -184,7 +186,9 @@ pub enum DeclarationKind {
 
 #[derive(Clone, Debug)]
 pub enum Declaration {
+    Behaviour(Box<Behaviour>),
     Function(Box<Function>),
+    Actor(Box<Actor>),
     Struct(Box<Struct>),
     Trait(Box<Trait>),
     Variable(Box<Variable>),
@@ -194,7 +198,9 @@ pub enum Declaration {
 impl Declaration {
     pub fn name(&self) -> String {
         match self {
+            Declaration::Behaviour(b) => b.name.clone(),
             Declaration::Function(f) => f.name.clone(),
+            Declaration::Actor(a) => a.name.clone(),
             Declaration::Struct(s) => s.name.clone(),
             Declaration::Trait(t) => t.name.clone(),
             Declaration::Variable(v) => v.name.clone(),
@@ -204,7 +210,9 @@ impl Declaration {
 
     pub fn declaration_kind(&self) -> DeclarationKind {
         match self {
+            Declaration::Behaviour(_) => DeclarationKind::Behaviour,
             Declaration::Function(_) => DeclarationKind::Function,
+            Declaration::Actor(_) => DeclarationKind::Actor,
             Declaration::Struct(_) => DeclarationKind::Struct,
             Declaration::Trait(_) => DeclarationKind::Trait,
             Declaration::Variable(_) => DeclarationKind::Variable,
@@ -220,14 +228,16 @@ impl Declaration {
         if kind == DeclarationKind::Type
             && (this == DeclarationKind::Struct
             || this == DeclarationKind::Trait
-            || this == DeclarationKind::Function)
+            || this == DeclarationKind::Function
+            || this == DeclarationKind::Behaviour
+            || this == DeclarationKind::Actor)
         {
             return true;
         }
         false
     }
 
-    pub fn get_type(&self) -> Box<Type> {
+    pub fn get_type(&self) -> Box<dyn Type> {
         match self {
             Declaration::Function(f) => f.get_type(),
             Declaration::Struct(s) => s.get_type(),
@@ -256,6 +266,17 @@ impl Declaration {
         // compare the pointers
         self as *const _ == declaration as *const _
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Actor {
+    pub name: String,
+    // Declaration::Variable
+    pub fields: Arc<RwLock<Vec<DeclarationContainer>>>,
+    // Declaration::Function
+    pub functions: Arc<RwLock<Vec<DeclarationContainer>>>,
+    // Declaration::Behaviour
+    pub behaviours: Arc<RwLock<Vec<DeclarationContainer>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -303,14 +324,12 @@ pub struct Function {
     pub name: String,
     pub arguments: Vec<(String, DeclarationContainer)>,
     pub return_type: DeclarationContainer,
-    pub refinements: Vec<(String, Vec<Arc<Mutex<Block>>>)>,
-    pub permissions: Vec<Permission>,
     pub blocks: Vec<Arc<Mutex<Block>>>,
 }
 
 impl Function {
     pub fn get_type(&self) -> Box<types::FunctionType> {
-        let mut arguments = Vec::<Box<types::Type>>::with_capacity(self.arguments.len());
+        let mut arguments = Vec::<Box<dyn types::Type>>::with_capacity(self.arguments.len());
 
         for arg in &self.arguments {
             arguments.push(arg.1.get_type());
@@ -319,6 +338,13 @@ impl Function {
         let result = self.return_type.get_type();
         Box::new(types::FunctionType { arguments, result })
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Behaviour {
+    pub name: String,
+    pub arguments: Vec<(String, DeclarationContainer)>,
+    pub blocks: Vec<Arc<Mutex<Block>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -351,7 +377,7 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn get_type(&self) -> Box<Type> {
+    pub fn get_type(&self) -> Box<dyn Type> {
         return match self {
             Instruction::IntegerLiteral(_) => builtin::COMPTIME_INT.get_type(),
             Instruction::DeclarationReference(s) => s.declaration.get_type(),
