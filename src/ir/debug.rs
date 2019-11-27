@@ -48,6 +48,9 @@ impl Printer {
             Declaration::Struct(ref struc) => {
                 self.print_struct(struc);
             }
+            Declaration::Behaviour(ref behaviour) => {
+                self.print_behaviour(behaviour);
+            }
             Declaration::Function(ref function) => {
                 self.print_function(function);
             }
@@ -119,6 +122,29 @@ impl Printer {
         self.print(format!("let {}", variable.name));
     }
 
+    pub fn print_behaviour(&mut self, behaviour: &Box<Behaviour>) {
+        let mut joined_args = "".to_string();
+        for (id, (arg, dec)) in (&behaviour.arguments).iter().enumerate() {
+            joined_args.push_str(&format!("%{}: {}", arg, dec.name()));
+            if id < behaviour.arguments.len() - 1 {
+                joined_args.push_str(", ");
+            }
+        }
+
+        self.print(format!(
+            "behave @{}({}):",
+            behaviour.name, joined_args
+        ));
+        self.push();
+
+        if behaviour.blocks.len() > 0 {
+            for (id, block) in behaviour.blocks.iter().enumerate() {
+                self.print_block(id, block);
+            }
+        }
+        self.pop();
+    }
+
     pub fn print_function(&mut self, function: &Box<Function>) {
         let mut joined_args = "".to_string();
         for (id, (arg, dec)) in (&function.arguments).iter().enumerate() {
@@ -136,12 +162,9 @@ impl Printer {
         self.push();
 
         if function.blocks.len() > 0 {
-            self.print(format!("body:"));
-            self.push();
             for (id, block) in function.blocks.iter().enumerate() {
                 self.print_block(id, block);
             }
-            self.pop();
         }
         self.pop();
     }

@@ -31,19 +31,21 @@ impl ir::Compiler {
                     }
 
                     for f in a.functions {
-                        let now = Instant::now();
-
                         let function = self.generate_ir_function(
                             current_path,
                             &completed_declarations,
                             &f,
                         );
                         functions.push(ir::DeclarationContainer::from(function));
-                        println!(
-                            "convert function_definition: {} {:?}",
-                            f.name,
-                            now.elapsed()
+                    }
+
+                    for b in a.behaviours {
+                        let behaviour = self.generate_ir_behaviour(
+                            current_path,
+                            &completed_declarations,
+                            &b,
                         );
+                        behaviours.push(ir::DeclarationContainer::from(behaviour));
                     }
 
                     let actor = ir::Actor {
@@ -67,19 +69,12 @@ impl ir::Compiler {
                     }
 
                     for f in s.functions {
-                        let now = Instant::now();
-
                         let function = self.generate_ir_function(
                             current_path,
                             &completed_declarations,
                             &f,
                         );
                         functions.push(ir::DeclarationContainer::from(function));
-                        println!(
-                            "convert function_definition: {} {:?}",
-                            f.name,
-                            now.elapsed()
-                        );
                     }
 
                     let strct = ir::Struct {
@@ -92,18 +87,12 @@ impl ir::Compiler {
                 }
                 ast::Node::Trait(t) => {}
                 ast::Node::Function(f) => {
-                    let now = Instant::now();
                     let function = self.generate_ir_function(
                         current_path,
                         &completed_declarations,
                         f.as_ref(),
                     );
                     completed_declarations.push(Arc::new(function));
-                    println!(
-                        "convert function_definition: {} {:?}",
-                        f.name,
-                        now.elapsed()
-                    );
                 }
                 ast::Node::VariableDeclaration(v) => {}
             }
@@ -114,6 +103,58 @@ impl ir::Compiler {
             name,
             declarations: completed_declarations,
         }
+    }
+
+    pub fn generate_ir_behaviour(
+        &self,
+        current_path: &ast::Path,
+        declarations: &Vec<Arc<ir::Declaration>>,
+        b: &ast::Behaviour,
+    ) -> ir::Declaration {
+        let name = b.name.clone();
+
+        // get the parameters from the function header
+        let mut param_names = vec![];
+        for (name, dec) in &b.arguments {
+            param_names.push(name.clone());
+        }
+
+        let mut block_builder = BlockBuilder::new();
+        let mut lvt = LocalVariableTable::new_with_params(param_names);
+
+        for statement in b.statements.iter() {
+            self.generate_ir_statement(
+                current_path,
+                declarations,
+                &mut lvt,
+                &mut block_builder,
+                statement,
+            );
+        }
+
+        let blocks = block_builder.blocks;
+        let mut blocks_wrapped = Vec::with_capacity(blocks.len());
+        for b in blocks {
+            // this might come back to bite me
+            if b.instructions.len() > 0 {
+                blocks_wrapped.push(Arc::new(Mutex::new(b)));
+            }
+        }
+        let mut arguments = Vec::with_capacity(b.arguments.len());
+        for (name, type_path) in b.arguments.iter() {
+            let typ = self.resolve(
+                type_path.0.clone(),
+                type_path.1.clone(),
+                Some(ir::DeclarationKind::Type),
+            );
+            arguments.push((name.clone(), typ));
+        }
+
+        ir::Declaration::Behaviour(Box::new(ir::Behaviour {
+            name,
+            arguments,
+            blocks: blocks_wrapped,
+        }))
     }
 
     pub fn generate_ir_function(

@@ -135,9 +135,9 @@ pub fn parse_struct(lexer: &mut Lexer, actor: bool) -> Result<Either<Struct, Act
             if let Either::Left(function) = parse_function(lexer, false)? {
                 functions.push(function);
             }
-        } else if lexer.has(Token::Behave) {
+        } else if lexer.has(Token::Behave) && actor {
             lexer.advance();
-            if let Either::Right(behaviour) = parse_function(lexer, false)? {
+            if let Either::Right(behaviour) = parse_function(lexer, true)? {
                 behaviours.push(behaviour);
             }
         } else if lexer.has(Token::Let) {
