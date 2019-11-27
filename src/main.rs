@@ -13,6 +13,7 @@ use parser::lexer::Token;
 mod parser;
 mod ast;
 mod ir;
+mod util;
 
 fn main() {
     let test = "\

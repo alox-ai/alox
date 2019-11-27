@@ -18,8 +18,42 @@ impl ir::Compiler {
         // go over each node and generate the ir
         for mut node in program.nodes {
             match node {
-                // todo
-                ast::Node::Actor(a) => {}
+                ast::Node::Actor(a) => {
+                    let mut fields = Vec::with_capacity(a.fields.len());
+                    let mut functions = Vec::with_capacity(a.functions.len());
+                    let mut behaviours = Vec::with_capacity(a.behaviours.len());
+
+                    for field in a.fields {
+                        let variable = ir::DeclarationContainer::from(ir::Declaration::Variable(Box::new(ir::Variable {
+                            name: field.name
+                        })));
+                        fields.push(variable);
+                    }
+
+                    for f in a.functions {
+                        let now = Instant::now();
+
+                        let function = self.generate_ir_function(
+                            current_path,
+                            &completed_declarations,
+                            &f,
+                        );
+                        functions.push(ir::DeclarationContainer::from(function));
+                        println!(
+                            "convert function_definition: {} {:?}",
+                            f.name,
+                            now.elapsed()
+                        );
+                    }
+
+                    let actor = ir::Actor {
+                        name: a.name,
+                        fields: Arc::new(RwLock::new(fields)),
+                        behaviours: Arc::new(RwLock::new(behaviours)),
+                        functions: Arc::new(RwLock::new(functions)),
+                    };
+                    completed_declarations.push(Arc::new(ir::Declaration::Actor(Box::new(actor))));
+                }
                 ast::Node::Struct(s) => {
                     let mut fields = Vec::with_capacity(s.fields.len());
                     let mut traits = Vec::with_capacity(s.traits.len());

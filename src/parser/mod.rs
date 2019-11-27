@@ -8,6 +8,7 @@ use lexer::Lexer;
 use lexer::Token;
 
 use crate::ast::*;
+use crate::util::Either;
 
 pub mod lexer;
 
@@ -39,7 +40,7 @@ impl ParserError {
                 buffer.push_str(&blank_header);
                 buffer.push_str(&format!("\n{}{}\n", err_header, line));
 
-                let spaces = " ";//.repeat(self.location.start - index - (line_num - 1));
+                let spaces = " ".repeat(self.location.start - index - (line_num - 1));
                 let arrows = "^".repeat(self.location.end - self.location.start);
 
                 buffer.push_str(&format!("{}{}{}\n", blank_header, spaces, arrows));
@@ -66,9 +67,14 @@ pub fn parse<'a>(path: Path, module_name: String, code: String) -> Option<Progra
             // function header
             lexer.advance();
 
-            match parse_function(&mut lexer) {
+            match parse_function(&mut lexer, false) {
                 Ok(dec) => {
-                    program.nodes.push(Node::Function(Box::new(dec)));
+                    match dec {
+                        Either::Left(func) => {
+                            program.nodes.push(Node::Function(Box::new(func)));
+                        }
+                        _ => {}
+                    }
                 }
                 Err(err) => {
                     let err = err.to_string(lexer.inner.source);
@@ -79,8 +85,8 @@ pub fn parse<'a>(path: Path, module_name: String, code: String) -> Option<Progra
         } else if lexer.has(Token::Struct) {
             lexer.advance();
 
-            match parse_struct(&mut lexer) {
-                Ok(dec) => {
+            match parse_struct(&mut lexer, false) {
+                Ok(Either::Left(dec)) => {
                     program.nodes.push(Node::Struct(Box::new(dec)));
                 }
                 Err(err) => {
@@ -88,6 +94,21 @@ pub fn parse<'a>(path: Path, module_name: String, code: String) -> Option<Progra
                     eprintln!("{}", err);
                     return None;
                 }
+                _ => {}
+            }
+        } else if lexer.has(Token::Actor) {
+            lexer.advance();
+
+            match parse_struct(&mut lexer, true) {
+                Ok(Either::Right(dec)) => {
+                    program.nodes.push(Node::Actor(Box::new(dec)));
+                }
+                Err(err) => {
+                    let err = err.to_string(lexer.inner.source);
+                    eprintln!("{}", err);
+                    return None;
+                }
+                _ => {}
             }
         } else {
             lexer.advance();
@@ -97,7 +118,7 @@ pub fn parse<'a>(path: Path, module_name: String, code: String) -> Option<Progra
     Some(program)
 }
 
-pub fn parse_struct(lexer: &mut Lexer) -> Result<Struct, ParserError> {
+pub fn parse_struct(lexer: &mut Lexer, actor: bool) -> Result<Either<Struct, Actor>, ParserError> {
     // struct X {
     lexer.expect(Token::Identifier, "Expected struct name")?;
     let name = lexer.slice().to_string();
@@ -105,14 +126,21 @@ pub fn parse_struct(lexer: &mut Lexer) -> Result<Struct, ParserError> {
     lexer.skip(Token::LeftBrace, "Expected opening brace")?;
 
     let mut functions = vec![];
+    let mut behaviours = vec![];
     let mut fields = vec![];
 
     while !lexer.has(Token::RightBrace) {
         if lexer.has(Token::Fun) {
             lexer.advance();
-            functions.push(parse_function(lexer)?);
+            if let Either::Left(function) = parse_function(lexer, false)? {
+                functions.push(function);
+            }
+        } else if lexer.has(Token::Behave) {
+            lexer.advance();
+            if let Either::Right(behaviour) = parse_function(lexer, false)? {
+                behaviours.push(behaviour);
+            }
         } else if lexer.has(Token::Let) {
-            println!("made it into struct parsing field");
             fields.push(parse_variable_declaration(lexer)?);
         } else {
             println!("test");
@@ -121,15 +149,24 @@ pub fn parse_struct(lexer: &mut Lexer) -> Result<Struct, ParserError> {
     }
     lexer.skip(Token::RightBrace, "Expected closing brace");
 
-    Ok(Struct {
-        name,
-        traits: vec![],
-        fields,
-        functions,
-    })
+    if actor {
+        Ok(Either::Right(Actor {
+            name,
+            fields,
+            functions,
+            behaviours,
+        }))
+    } else {
+        Ok(Either::Left(Struct {
+            name,
+            traits: vec![],
+            fields,
+            functions,
+        }))
+    }
 }
 
-pub fn parse_function(lexer: &mut Lexer) -> Result<Function, ParserError> {
+pub fn parse_function(lexer: &mut Lexer, behaviour: bool) -> Result<Either<Function, Behaviour>, ParserError> {
     // fun main
     lexer.expect(Token::Identifier, "Expected function name")?;
     let function_name = lexer.slice().to_string();
@@ -192,12 +229,20 @@ pub fn parse_function(lexer: &mut Lexer) -> Result<Function, ParserError> {
         lexer.unexpected()?;
     }
 
-    Ok(Function {
-        name: function_name,
-        arguments,
-        return_type,
-        statements,
-    })
+    if behaviour {
+        Ok(Either::Right(Behaviour {
+            name: function_name,
+            arguments,
+            statements,
+        }))
+    } else {
+        Ok(Either::Left(Function {
+            name: function_name,
+            arguments,
+            return_type,
+            statements,
+        }))
+    }
 }
 
 pub fn parse_statement(lexer: &mut Lexer) -> Result<Statement, ParserError> {

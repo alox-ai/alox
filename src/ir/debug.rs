@@ -42,6 +42,9 @@ impl Printer {
 
     pub fn print_declaration(&mut self, dec: &Arc<Declaration>) {
         match **dec {
+            Declaration::Actor(ref actor) => {
+                self.print_actor(actor);
+            }
             Declaration::Struct(ref struc) => {
                 self.print_struct(struc);
             }
@@ -77,6 +80,36 @@ impl Printer {
             let function_guard = function.0.lock().unwrap();
             if let Some(ref function) = *function_guard {
                 self.print_declaration(function);
+            }
+        }
+        self.pop();
+    }
+
+    pub fn print_actor(&mut self, actor: &Box<Actor>) {
+        self.print(format!("actor {}:", actor.name));
+        self.push();
+
+        let fields = actor.fields.read().unwrap();
+        for field in fields.iter() {
+            let field_guard = field.0.lock().unwrap();
+            if let Some(ref field) = *field_guard {
+                self.print_declaration(field);
+            }
+        }
+
+        let functions = actor.functions.read().unwrap();
+        for function in functions.iter() {
+            let function_guard = function.0.lock().unwrap();
+            if let Some(ref function) = *function_guard {
+                self.print_declaration(function);
+            }
+        }
+
+        let behaviours = actor.behaviours.read().unwrap();
+        for behaviour in behaviours.iter() {
+            let behaviour_guard = behaviour.0.lock().unwrap();
+            if let Some(ref behaviour) = *behaviour_guard {
+                self.print_declaration(behaviour);
             }
         }
         self.pop();
