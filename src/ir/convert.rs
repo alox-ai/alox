@@ -25,6 +25,13 @@ impl ir::Compiler {
                     let mut traits = Vec::with_capacity(s.traits.len());
                     let mut functions = Vec::with_capacity(s.functions.len());
 
+                    for field in s.fields {
+                        let variable = ir::DeclarationContainer::from(ir::Declaration::Variable(Box::new(ir::Variable {
+                            name: field.name
+                        })));
+                        fields.push(variable);
+                    }
+
                     for f in s.functions {
                         let now = Instant::now();
 
@@ -144,15 +151,19 @@ impl ir::Compiler {
     ) {
         match statement {
             ast::Statement::VariableDeclaration(d) => {
-                let expr_ins = self.generate_ir_expression(
-                    current_path,
-                    completed_declarations,
-                    lvt,
-                    block_builder.current_block(),
-                    &d.initial_expression,
-                    None,
-                );
-                lvt.set(d.name.clone(), expr_ins);
+                if let Some(exp) = &d.initial_expression {
+                    let expr_ins = self.generate_ir_expression(
+                        current_path,
+                        completed_declarations,
+                        lvt,
+                        block_builder.current_block(),
+                        exp,
+                        None,
+                    );
+                    lvt.set(d.name.clone(), expr_ins);
+                } else {
+                    lvt.set(d.name.clone(), Arc::new(Mutex::new(ir::Instruction::Unreachable("MissingInitialExpression".to_string()))));
+                }
             }
             ast::Statement::Return(r) => {
                 let expr_ins = self.generate_ir_expression(

@@ -27,7 +27,11 @@ fn main() {
     }
 
     struct X {
-        x: Int32
+        let x : Int32
+
+        fun bar2(a: Int32): Int32 {
+            return 2
+        }
     }
 
     actor A {
@@ -37,7 +41,7 @@ fn main() {
         }
 
         fun bar(a: Int32): Int32 {
-            return a + 2
+            return a
         }
     }
     ".to_string();
@@ -57,9 +61,9 @@ fn main() {
             ast::VariableDeclaration {
                 name: "INT32_MAX".to_string(),
                 type_name: Some((ast::Path(vec![]), "Int32".to_string())),
-                initial_expression: ast::Expression::IntegerLiteral(Box::new(ast::IntegerLiteral(
+                initial_expression: Some(ast::Expression::IntegerLiteral(Box::new(ast::IntegerLiteral(
                     2_147_483_647,
-                ))),
+                )))),
             },
         )));
 
@@ -175,7 +179,7 @@ fn main() {
                     ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
                         name: "a".to_string(),
                         type_name: None,
-                        initial_expression: ast::Expression::FunctionCall(Box::new(
+                        initial_expression: Some(ast::Expression::FunctionCall(Box::new(
                             ast::FunctionCall {
                                 function: ast::Expression::VariableReference(Box::new(
                                     ast::VariableReference::from_str("-"),
@@ -189,19 +193,19 @@ fn main() {
                                     ))),
                                 ],
                             },
-                        )),
+                        ))),
                     })),
                     ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
                         name: "b".to_string(),
                         type_name: None,
-                        initial_expression: ast::Expression::IntegerLiteral(Box::new(
+                        initial_expression: Some(ast::Expression::IntegerLiteral(Box::new(
                             ast::IntegerLiteral(3),
-                        )),
+                        ))),
                     })),
                     ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
                         name: "c".to_string(),
                         type_name: None,
-                        initial_expression: ast::Expression::FunctionCall(Box::new(
+                        initial_expression: Some(ast::Expression::FunctionCall(Box::new(
                             ast::FunctionCall {
                                 function: ast::Expression::VariableReference(Box::new(
                                     ast::VariableReference {
@@ -221,7 +225,7 @@ fn main() {
                                     )),
                                 ],
                             },
-                        )),
+                        ))),
                     })),
                     ast::Statement::FunctionCall(Box::new(ast::FunctionCall {
                         function: ast::Expression::VariableReference(Box::new(

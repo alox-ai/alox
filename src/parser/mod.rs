@@ -39,7 +39,7 @@ impl ParserError {
                 buffer.push_str(&blank_header);
                 buffer.push_str(&format!("\n{}{}\n", err_header, line));
 
-                let spaces = " ".repeat(self.location.start - index - (line_num - 1));
+                let spaces = " ";//.repeat(self.location.start - index - (line_num - 1));
                 let arrows = "^".repeat(self.location.end - self.location.start);
 
                 buffer.push_str(&format!("{}{}{}\n", blank_header, spaces, arrows));
@@ -76,12 +76,57 @@ pub fn parse<'a>(path: Path, module_name: String, code: String) -> Option<Progra
                     return None;
                 }
             }
+        } else if lexer.has(Token::Struct) {
+            lexer.advance();
+
+            match parse_struct(&mut lexer) {
+                Ok(dec) => {
+                    program.nodes.push(Node::Struct(Box::new(dec)));
+                }
+                Err(err) => {
+                    let err = err.to_string(lexer.inner.source);
+                    eprintln!("{}", err);
+                    return None;
+                }
+            }
         } else {
             lexer.advance();
         }
     }
 
     Some(program)
+}
+
+pub fn parse_struct(lexer: &mut Lexer) -> Result<Struct, ParserError> {
+    // struct X {
+    lexer.expect(Token::Identifier, "Expected struct name")?;
+    let name = lexer.slice().to_string();
+    lexer.advance();
+    lexer.skip(Token::LeftBrace, "Expected opening brace")?;
+
+    let mut functions = vec![];
+    let mut fields = vec![];
+
+    while !lexer.has(Token::RightBrace) {
+        if lexer.has(Token::Fun) {
+            lexer.advance();
+            functions.push(parse_function(lexer)?);
+        } else if lexer.has(Token::Let) {
+            println!("made it into struct parsing field");
+            fields.push(parse_variable_declaration(lexer)?);
+        } else {
+            println!("test");
+            lexer.unexpected()?;
+        }
+    }
+    lexer.skip(Token::RightBrace, "Expected closing brace");
+
+    Ok(Struct {
+        name,
+        traits: vec![],
+        fields,
+        functions,
+    })
 }
 
 pub fn parse_function(lexer: &mut Lexer) -> Result<Function, ParserError> {
@@ -161,33 +206,40 @@ pub fn parse_statement(lexer: &mut Lexer) -> Result<Statement, ParserError> {
         let expression = parse_expression(lexer)?;
         return Ok(Statement::Return(Box::new(Return { expression })));
     } else if lexer.has(Token::Let) {
-        lexer.advance(); // skip let
-        lexer.expect(Token::Identifier, "Expected variable name after 'let'");
-        let name = lexer.slice().to_string();
-
-        let type_name: Option<(Path, String)>;
-        if lexer.has(Token::Colon) {
-            lexer.advance();
-            lexer.expect(Token::Identifier, "Expected type after colon")?;
-            let ret_type_o = parse_path_ident(lexer);
-            if let None = ret_type_o { return ParserError::from(lexer, "Couldn't parse type after colon"); }
-            type_name = Some(ret_type_o.unwrap());
-        } else {
-            type_name = None;
-        }
-        lexer.advance();
-
-        lexer.skip(Token::Equals, "Expected equal sign after variable declaration");
-
-        let initial_expression = parse_expression(lexer)?;
-
-        return Ok(Statement::VariableDeclaration(Box::new(VariableDeclaration {
-            name,
-            type_name,
-            initial_expression,
-        })));
+        return Ok(Statement::VariableDeclaration(Box::new(parse_variable_declaration(lexer)?)));
     }
     lexer.unexpected()
+}
+
+fn parse_variable_declaration(lexer: &mut Lexer) -> Result<VariableDeclaration, ParserError> {
+    // skip let
+    lexer.advance();
+
+    lexer.expect(Token::Identifier, "Expected variable name after 'let'");
+    let name = lexer.slice().to_string();
+    let type_name: Option<(Path, String)>;
+    lexer.advance();
+
+    if lexer.has(Token::Colon) {
+        lexer.advance();
+        lexer.expect(Token::Identifier, "Expected type after colon")?;
+        let ret_type_o = parse_path_ident(lexer);
+        if let None = ret_type_o { return ParserError::from(lexer, "Couldn't parse type after colon"); }
+        type_name = Some(ret_type_o.unwrap());
+    } else {
+        type_name = None;
+    }
+
+    let initial_expression = if lexer.has(Token::Equals) {
+        lexer.advance();
+        Some(parse_expression(lexer)?)
+    } else { None };
+
+    return Ok(VariableDeclaration {
+        name,
+        type_name,
+        initial_expression,
+    });
 }
 
 pub fn parse_expression(lexer: &mut Lexer) -> Result<Expression, ParserError> {

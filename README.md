@@ -28,7 +28,7 @@ Roadmap:
 * Backend
     * Normal Backends
         * [ ] Look at [CraneLift](https://github.com/CraneStation/CraneLift)
-        * [ ] LLVM ([inkwell](https://github.com/TheDan64/inkwell) or [llvm-sys](https://crates.io/crates/llvm-sys)
+        * [ ] LLVM ([inkwell](https://github.com/TheDan64/inkwell) or [llvm-sys](https://crates.io/crates/llvm-sys))
     * GPU Backends
         * [ ] Dynamically figure out the best backend to use
         * [ ] SPIR-V ([rspirv](https://github.com/gfx-rs/rspirv))
@@ -46,7 +46,6 @@ Language Ideas
 * Compile time code execution
 * Strong type system
     * Algebraic Data Types
-    * Refinements on function arguments
     * Unique & Borrowed Types
 * Automatic Versioning
     * Enforce public APIs

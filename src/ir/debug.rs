@@ -42,6 +42,9 @@ impl Printer {
 
     pub fn print_declaration(&mut self, dec: &Arc<Declaration>) {
         match **dec {
+            Declaration::Struct(ref struc) => {
+                self.print_struct(struc);
+            }
             Declaration::Function(ref function) => {
                 self.print_function(function);
             }
@@ -50,6 +53,33 @@ impl Printer {
             }
             _ => {}
         }
+    }
+
+    pub fn print_struct(&mut self, struc: &Box<Struct>) {
+        self.print(format!("struct {}:", struc.name));
+        self.push();
+
+        let traits = struc.traits.read().unwrap();
+        for trai in traits.iter() {
+            self.print(format!("+trait {}", trai.name()))
+        }
+
+        let fields = struc.fields.read().unwrap();
+        for field in fields.iter() {
+            let field_guard = field.0.lock().unwrap();
+            if let Some(ref field) = *field_guard {
+                self.print_declaration(field);
+            }
+        }
+
+        let functions = struc.functions.read().unwrap();
+        for function in functions.iter() {
+            let function_guard = function.0.lock().unwrap();
+            if let Some(ref function) = *function_guard {
+                self.print_declaration(function);
+            }
+        }
+        self.pop();
     }
 
     pub fn print_variable(&mut self, variable: &Box<Variable>) {

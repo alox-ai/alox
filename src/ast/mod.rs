@@ -102,7 +102,7 @@ pub struct Behaviour {
 pub struct VariableDeclaration {
     pub name: String,
     pub type_name: Option<(Path, String)>,
-    pub initial_expression: Expression,
+    pub initial_expression: Option<Expression>,
 }
 
 // -- STATEMENTS -- \\
