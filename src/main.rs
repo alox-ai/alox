@@ -9,11 +9,12 @@ use std::time::Instant;
 use logos::Logos;
 
 use parser::lexer::Token;
+use crate::ir::debug::PrintMode;
 
-mod parser;
-mod ast;
-mod ir;
-mod util;
+pub mod parser;
+pub mod ast;
+pub mod ir;
+pub mod util;
 
 fn main() {
     let test = "\
@@ -267,7 +268,7 @@ fn main() {
     }
     handle.join().unwrap();
 
-    let mut printer = ir::debug::Printer::new();
+    let mut printer = ir::debug::Printer::new(PrintMode::Stdout);
     for module in compiler.modules.read().unwrap().iter() {
         printer.print_module(module);
     }

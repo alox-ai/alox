@@ -6,13 +6,24 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use crate::ir::*;
 use crate::util::Either;
 
+pub enum PrintMode {
+    Stdout,
+    Buffer,
+}
+
 pub struct Printer {
     depth: usize,
+    mode: PrintMode,
+    pub buffer: String,
 }
 
 impl Printer {
-    pub fn new() -> Self {
-        Self { depth: 0 }
+    pub fn new(mode: PrintMode) -> Self {
+        Self {
+            depth: 0,
+            mode,
+            buffer: String::new(),
+        }
     }
 
     pub fn push(&mut self) {
@@ -23,11 +34,21 @@ impl Printer {
         self.depth -= 1;
     }
 
-    pub fn print(&self, s: String) {
-        if self.depth > 0 {
-            print!("{}", "  ".repeat(self.depth));
+    pub fn print(&mut self, s: String) {
+        match self.mode {
+            PrintMode::Stdout => {
+                if self.depth > 0 {
+                    print!("{}", "  ".repeat(self.depth));
+                }
+                println!("{}", s);
+            }
+            PrintMode::Buffer => {
+                if self.depth > 0 {
+                    self.buffer.push_str(&"  ".repeat(self.depth));
+                }
+                self.buffer.push_str(&format!("{}\n", s));
+            }
         }
-        println!("{}", s);
     }
 
     pub fn print_module(&mut self, module: &Module) {

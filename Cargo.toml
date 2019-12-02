@@ -4,6 +4,14 @@ version = "0.1.0"
 authors = ["Jadon Fowler <j@jadon.io>"]
 edition = "2018"
 
+[lib]
+name = "alox"
+path = "src/lib.rs"
+
+[[bin]]
+name = "alox"
+path = "src/main.rs"
+
 [build-dependencies]
 #lalrpop = "0.17.1"
 
