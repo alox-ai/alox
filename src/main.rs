@@ -42,7 +42,7 @@ fn main() {
         }
 
         fun bar(a: Int32): Int32 {
-            return a
+            return test(a)
         }
     }
     ".to_string();

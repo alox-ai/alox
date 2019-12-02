@@ -32,7 +32,7 @@ Roadmap:
     * GPU Backends
         * [ ] Dynamically figure out the best backend to use
         * [ ] SPIR-V ([rspirv](https://github.com/gfx-rs/rspirv))
-        * [ ] CUDA ([libcuda](https://github.com/peterhj/libcuda]))
+        * [ ] CUDA ([libcuda](https://github.com/peterhj/libcuda))
         * [ ] OpenCL (for older platforms?) ([ocl](https://github.com/cogciprocate/ocl))
 * Runtime
     * [ ] Schedulers

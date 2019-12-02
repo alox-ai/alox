@@ -4,6 +4,7 @@ use std::env::var;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::ir::*;
+use crate::util::Either;
 
 pub struct Printer {
     depth: usize,
@@ -139,7 +140,7 @@ impl Printer {
 
         if behaviour.blocks.len() > 0 {
             for (id, block) in behaviour.blocks.iter().enumerate() {
-                self.print_block(id, block);
+                self.print_block(id, block, Either::Right(behaviour));
             }
         }
         self.pop();
@@ -163,13 +164,13 @@ impl Printer {
 
         if function.blocks.len() > 0 {
             for (id, block) in function.blocks.iter().enumerate() {
-                self.print_block(id, block);
+                self.print_block(id, block, Either::Left(function));
             }
         }
         self.pop();
     }
 
-    pub fn print_block(&mut self, id: usize, mut block: &Arc<Mutex<Block>>) {
+    pub fn print_block(&mut self, id: usize, mut block: &Arc<Mutex<Block>>, function: Either<&Box<Function>, &Box<Behaviour>>) {
         let mut block = block.lock().unwrap();
         self.print(format!("block#{}:", id));
 
@@ -177,7 +178,7 @@ impl Printer {
         let mut map: HashMap<*const Mutex<Instruction>, usize> = HashMap::new();
         for (id, instruction) in block.instructions.iter().enumerate() {
             map.insert(instruction.as_ref() as *const Mutex<Instruction>, id);
-            self.print_instruction(&map, id, instruction);
+            self.print_instruction(&map, id, instruction, function);
         }
         self.pop();
     }
@@ -187,9 +188,10 @@ impl Printer {
         map: &HashMap<*const Mutex<Instruction>, usize>,
         id: usize,
         instruction: &Arc<Mutex<Instruction>>,
+        function: Either<&Box<Function>, &Box<Behaviour>>,
     ) {
         let mut instruction = instruction.lock().unwrap();
-        let ins_type = instruction.get_type().name();
+        let ins_type = instruction.get_type_with_context(function).name();
         match *instruction {
             Instruction::DeclarationReference(ref d) => {
                 let (path, name) = &d.name;

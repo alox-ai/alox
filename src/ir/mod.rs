@@ -9,6 +9,7 @@ use std::thread;
 use crate::ast;
 use crate::ir::debug::Printer;
 use crate::ir::types::{PrimitiveType, Type};
+use crate::util::Either;
 
 pub mod convert;
 pub mod debug;
@@ -405,6 +406,34 @@ impl Instruction {
             | Instruction::Branch(_) => Box::new(types::PrimitiveType::NoReturn),
             _ => Box::new(types::UnresolvedType { name: "UnknownInstruction".to_string() })
         };
+    }
+
+    /// Get type of an instruction in the context of a function or behaviour.
+    /// Useful for getting the type of parameters.
+    pub fn get_type_with_context(&self, context: Either<&Box<Function>, &Box<Behaviour>>) -> Box<dyn Type> {
+        match self {
+            Instruction::GetParameter(g) => {
+                let name = &g.name;
+                match context {
+                    Either::Left(f) => {
+                        for (arg_name, declaration) in &f.arguments {
+                            if arg_name == name {
+                                return declaration.get_type();
+                            }
+                        }
+                    }
+                    Either::Right(b) => {
+                        for (arg_name, declaration) in &b.arguments {
+                            if arg_name == name {
+                                return declaration.get_type();
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        self.get_type()
     }
 }
 
