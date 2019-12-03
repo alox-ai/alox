@@ -201,7 +201,7 @@ pub fn parse_function(lexer: &mut Lexer, behaviour: bool) -> Result<Either<Funct
         // fun main()
         lexer.advance();
     } else {
-        return ParserError::from(lexer, "Unexpected symbol");
+        lexer.unexpected()?;
     }
 
     // fun main(x: a::a::a, y: b::b::b): c::c::c

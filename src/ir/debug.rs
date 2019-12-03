@@ -141,7 +141,7 @@ impl Printer {
     }
 
     pub fn print_variable(&mut self, variable: &Box<Variable>) {
-        self.print(format!("let {}", variable.name));
+        self.print(format!("let {}: {}", variable.name, variable.typ.get_type().name().clone()));
     }
 
     pub fn print_behaviour(&mut self, behaviour: &Box<Behaviour>) {

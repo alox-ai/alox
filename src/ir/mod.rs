@@ -306,6 +306,7 @@ pub struct Trait {
 #[derive(Clone, Debug)]
 pub struct Variable {
     pub name: String,
+    pub typ: DeclarationContainer,
 }
 
 #[derive(Clone, Debug)]

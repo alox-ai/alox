@@ -24,8 +24,19 @@ impl ir::Compiler {
                     let mut behaviours = Vec::with_capacity(a.behaviours.len());
 
                     for field in a.fields {
+                        let declaration = if let Some(type_path) = field.type_name {
+                            self.resolve(
+                                type_path.0.clone(),
+                                type_path.1.clone(),
+                                Some(ir::DeclarationKind::Type),
+                            )
+                        } else {
+                            // TODO better errors
+                            panic!("No type on field")
+                        };
                         let variable = ir::DeclarationContainer::from(ir::Declaration::Variable(Box::new(ir::Variable {
-                            name: field.name
+                            name: field.name,
+                            typ: declaration,
                         })));
                         fields.push(variable);
                     }
@@ -62,8 +73,19 @@ impl ir::Compiler {
                     let mut functions = Vec::with_capacity(s.functions.len());
 
                     for field in s.fields {
+                        let declaration = if let Some(type_path) = field.type_name {
+                            self.resolve(
+                                type_path.0.clone(),
+                                type_path.1.clone(),
+                                Some(ir::DeclarationKind::Type),
+                            )
+                        } else {
+                            // TODO better errors
+                            panic!("No type on field")
+                        };
                         let variable = ir::DeclarationContainer::from(ir::Declaration::Variable(Box::new(ir::Variable {
-                            name: field.name
+                            name: field.name,
+                            typ: declaration,
                         })));
                         fields.push(variable);
                     }

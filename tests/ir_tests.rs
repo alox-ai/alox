@@ -102,3 +102,37 @@ fun @bar(%g: Int32) -> Int32:
     ret %10
 ")
 }
+
+#[test]
+pub fn fields_in_struct() {
+    check_ir("fields_in_struct", "\
+struct X {
+    let x: Int32
+    let y: Float32
+    let b: Bool
+}
+", "\
+; Module: test::fields_in_struct
+struct X:
+  let x: Int32
+  let y: Float32
+  let b: Bool
+")
+}
+
+#[test]
+pub fn fields_in_actor() {
+    check_ir("fields_in_actor", "\
+actor A {
+    let x: Int32
+    let y: Float32
+    let b: Bool
+}
+", "\
+; Module: test::fields_in_actor
+actor A:
+  let x: Int32
+  let y: Float32
+  let b: Bool
+")
+}

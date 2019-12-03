@@ -1,6 +1,11 @@
 #[macro_use]
 extern crate lazy_static;
 extern crate logos;
+extern crate cranelift_codegen;
+extern crate cranelift_frontend;
+extern crate cuda;
+extern crate rspirv;
+extern crate spirv_headers as spirv;
 
 use std::sync::Arc;
 use std::thread;
@@ -10,10 +15,12 @@ use logos::Logos;
 
 use parser::lexer::Token;
 use crate::ir::debug::PrintMode;
+use crate::backend::cranelift::CraneLiftBackend;
 
 pub mod parser;
 pub mod ast;
 pub mod ir;
+pub mod backend;
 pub mod util;
 
 fn main() {
@@ -48,6 +55,16 @@ fn main() {
     }
     ".to_string();
     let mut parsed_program = parser::parse(ast::Path::of("test"), "parsed".to_string(), test);
+
+    let valid_test = "\
+fun test(a: Int32): Int32 {
+    return a
+}
+
+fun bar(a: Int32): Int32 {
+    return test(a)
+}".to_string();
+    let mut parsed_valid_test = parser::parse(ast::Path::of("test"), "valid".to_string(), valid_test);
 
     let mut add_program = ast::Program {
         path: ast::Path::of("test"),
@@ -266,11 +283,21 @@ fn main() {
         }
         None => {}
     }
+    match parsed_valid_test {
+        Some(parsed_valid_test) => {
+            compiler.add_module(compiler.generate_ir(parsed_valid_test));
+        }
+        None => {}
+    }
     handle.join().unwrap();
 
     let mut printer = ir::debug::Printer::new(PrintMode::Stdout);
     for module in compiler.modules.read().unwrap().iter() {
         printer.print_module(module);
+        if module.name == "valid".to_string() {
+            let backend = CraneLiftBackend::new();
+            backend.compile_module(module);
+        }
     }
 
     let resolutions = compiler.resolutions_needed.read().unwrap();
