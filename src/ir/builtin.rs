@@ -1,7 +1,7 @@
-use crate::ast;
 use crate::ir;
 use crate::ir::{Declaration, DeclarationContainer};
 use crate::ir::types::PrimitiveType;
+use crate::ir::types::Type;
 
 pub fn find_builtin_declaration(name: String, kind: Option<ir::DeclarationKind>) -> Option<ir::DeclarationContainer> {
     if let Some(ir::DeclarationKind::Type) = kind {
@@ -25,7 +25,7 @@ pub fn find_builtin_declaration(name: String, kind: Option<ir::DeclarationKind>)
 }
 
 fn wrap_primitive(typ: PrimitiveType) -> DeclarationContainer {
-    DeclarationContainer::from(Declaration::PrimitiveType(Box::new(typ)))
+    DeclarationContainer::from(Declaration::Type(Box::new(Type::Primitive(typ))))
 }
 
 // constant declarations for builtin types

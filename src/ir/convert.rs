@@ -1,11 +1,9 @@
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
 use crate::ast;
 use crate::ir;
-use crate::ir::{DeclarationContainer, DeclarationKind};
 
 impl ir::Compiler {
     pub fn generate_ir(&self, program: ast::Program) -> ir::Module {
@@ -16,7 +14,7 @@ impl ir::Compiler {
         let mut completed_declarations: Vec<Arc<ir::Declaration>> = vec![];
 
         // go over each node and generate the ir
-        for mut node in program.nodes {
+        for node in program.nodes {
             match node {
                 ast::Node::Actor(a) => {
                     let mut fields = Vec::with_capacity(a.fields.len());
@@ -107,7 +105,7 @@ impl ir::Compiler {
                     };
                     completed_declarations.push(Arc::new(ir::Declaration::Struct(Box::new(strct))));
                 }
-                ast::Node::Trait(t) => {}
+                ast::Node::Trait(_) => {}
                 ast::Node::Function(f) => {
                     let function = self.generate_ir_function(
                         current_path,
@@ -116,7 +114,7 @@ impl ir::Compiler {
                     );
                     completed_declarations.push(Arc::new(function));
                 }
-                ast::Node::VariableDeclaration(v) => {}
+                ast::Node::VariableDeclaration(_) => {}
             }
         }
 
@@ -137,7 +135,7 @@ impl ir::Compiler {
 
         // get the parameters from the function header
         let mut param_names = vec![];
-        for (name, dec) in &b.arguments {
+        for (name, _dec) in &b.arguments {
             param_names.push(name.clone());
         }
 
@@ -189,7 +187,7 @@ impl ir::Compiler {
 
         // get the parameters from the function header
         let mut param_names = vec![];
-        for (name, dec) in &f.arguments {
+        for (name, _dec) in &f.arguments {
             param_names.push(name.clone());
         }
 
@@ -307,7 +305,6 @@ impl ir::Compiler {
                 ))));
                 block_builder.add_instruction(call_ins);
             }
-            _ => {}
         }
     }
 
@@ -494,7 +491,7 @@ impl LocalVariableTable {
     }
 
     pub fn set(&mut self, name: String, instruction: Arc<Mutex<ir::Instruction>>) {
-        if let Some(mut map) = self.table.last_mut() {
+        if let Some(map) = self.table.last_mut() {
             map.insert(name, instruction);
         }
     }

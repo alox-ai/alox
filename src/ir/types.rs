@@ -1,11 +1,44 @@
 use core::fmt::{Formatter, Result};
 use std::fmt::Debug;
 
-pub trait Type: Send + Sync {
-    fn name(&self) -> String;
+#[derive(Clone)]
+pub enum Type {
+    Unresolved(UnresolvedType),
+    Struct(StructType),
+    Function(FunctionType),
+    Primitive(PrimitiveType),
 }
 
-impl Debug for dyn Type {
+impl Type {
+    pub fn name(&self) -> String {
+        match self {
+            Type::Unresolved(u) => u.name.clone(),
+            Type::Struct(s) => s.name.clone(),
+            Type::Function(f) => {
+                let mut s = "".to_string();
+                for x in &f.arguments {
+                    s.push_str(&x.name());
+                    s.push_str(" -> ")
+                }
+                s.push_str(&f.result.name());
+                s
+            }
+            Type::Primitive(p) => {
+                match p {
+                    PrimitiveType::Int(size) =>
+                        if *size < 255u8 { format!("Int{}", *size) } else { "ComptimeInt".to_string() },
+                    PrimitiveType::Float(size) =>
+                        if *size < 255u8 { format!("Float{}", *size) } else { "ComptimeFloat".to_string() },
+                    PrimitiveType::Bool => String::from("Bool"),
+                    PrimitiveType::Void => String::from("Void"),
+                    PrimitiveType::NoReturn => String::from("NoReturn")
+                }
+            }
+        }
+    }
+}
+
+impl Debug for Type {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}", self.name())?;
         Ok(())
@@ -23,37 +56,16 @@ impl UnresolvedType {
     }
 }
 
-impl Type for UnresolvedType {
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-}
-
+#[derive(Clone, Debug)]
 pub struct StructType {
     pub name: String,
+    pub fields: Vec<(String, Box<Type>)>
 }
 
-impl Type for StructType {
-    fn name(&self) -> String {
-        self.name.clone()
-    }
-}
-
+#[derive(Clone, Debug)]
 pub struct FunctionType {
-    pub arguments: Vec<Box<dyn Type>>,
-    pub result: Box<dyn Type>,
-}
-
-impl Type for FunctionType {
-    fn name(&self) -> String {
-        let mut s = "".to_string();
-        for x in &self.arguments {
-            s.push_str(&x.name());
-            s.push_str(" -> ")
-        }
-        s.push_str(&self.result.name());
-        s
-    }
+    pub arguments: Vec<Box<Type>>,
+    pub result: Box<Type>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -90,19 +102,5 @@ impl PrimitiveType {
             return Some(PrimitiveType::NoReturn);
         }
         None
-    }
-}
-
-impl Type for PrimitiveType {
-    fn name(&self) -> String {
-        match self {
-            PrimitiveType::Int(size) =>
-                if *size < 255u8 { format!("Int{}", *size) } else { "ComptimeInt".to_string() },
-            PrimitiveType::Float(size) =>
-                if *size < 255u8 { format!("Float{}", *size) } else { "ComptimeFloat".to_string() },
-            PrimitiveType::Bool => String::from("Bool"),
-            PrimitiveType::Void => String::from("Void"),
-            PrimitiveType::NoReturn => String::from("NoReturn")
-        }
     }
 }

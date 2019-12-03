@@ -1,13 +1,7 @@
-use core::borrow::BorrowMut;
-use std::any::Any;
-use std::collections::HashMap;
 use std::fmt::{Display, Error, Formatter};
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, RwLock};
-use std::thread;
 
 use crate::ast;
-use crate::ir::debug::Printer;
 use crate::ir::types::{PrimitiveType, Type};
 use crate::util::Either;
 
@@ -19,7 +13,7 @@ pub mod builtin;
 // Thread safe reference to a mutable option of a thread safe reference to a declaration
 // acts as a declaration "hole" that needs to be filled
 #[derive(Clone, Debug)]
-pub struct DeclarationContainer(Arc<Mutex<Option<Arc<Declaration>>>>);
+pub struct DeclarationContainer(pub Arc<Mutex<Option<Arc<Declaration>>>>);
 
 impl DeclarationContainer {
     pub fn from(declaration: Declaration) -> Self {
@@ -49,12 +43,12 @@ impl DeclarationContainer {
         String::from("notfound")
     }
 
-    pub fn get_type(&self) -> Box<dyn Type> {
+    pub fn get_type(&self) -> Box<Type> {
         let guard = self.0.lock().unwrap();
         if let Some(ref dec) = *guard {
             return dec.get_type();
         }
-        Box::new(types::UnresolvedType { name: "UnresolvedReference".to_string() })
+        Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnresolvedReference".to_string() }))
     }
 }
 
@@ -130,8 +124,8 @@ impl Compiler {
             }
         }
         if let Some(primitive) = PrimitiveType::from_name(name.clone()) {
-            return DeclarationContainer::from(Declaration::PrimitiveType(
-                Box::new(primitive),
+            return DeclarationContainer::from(Declaration::Type(
+                Box::new(Type::Primitive(primitive))
             ));
         }
 
@@ -193,7 +187,7 @@ pub enum Declaration {
     Struct(Box<Struct>),
     Trait(Box<Trait>),
     Variable(Box<Variable>),
-    PrimitiveType(Box<PrimitiveType>),
+    Type(Box<Type>),
 }
 
 impl Declaration {
@@ -205,7 +199,7 @@ impl Declaration {
             Declaration::Struct(s) => s.name.clone(),
             Declaration::Trait(t) => t.name.clone(),
             Declaration::Variable(v) => v.name.clone(),
-            Declaration::PrimitiveType(p) => p.name().clone(),
+            Declaration::Type(t) => t.name().clone(),
         }
     }
 
@@ -217,7 +211,7 @@ impl Declaration {
             Declaration::Struct(_) => DeclarationKind::Struct,
             Declaration::Trait(_) => DeclarationKind::Trait,
             Declaration::Variable(_) => DeclarationKind::Variable,
-            Declaration::PrimitiveType(_) => DeclarationKind::Type,
+            Declaration::Type(_) => DeclarationKind::Type,
         }
     }
 
@@ -238,12 +232,12 @@ impl Declaration {
         false
     }
 
-    pub fn get_type(&self) -> Box<dyn Type> {
+    pub fn get_type(&self) -> Box<Type> {
         match self {
             Declaration::Function(f) => f.get_type(),
             Declaration::Struct(s) => s.get_type(),
-            Declaration::PrimitiveType(t) => t.clone(),
-            _ => Box::new(types::UnresolvedType::of("UnresolvedDeclaration")),
+            Declaration::Type(t) => t.clone(),
+            _ => Box::new(types::Type::Unresolved(types::UnresolvedType::of("UnresolvedDeclaration"))),
         }
     }
 
@@ -292,8 +286,15 @@ pub struct Struct {
 }
 
 impl Struct {
-    pub fn get_type(&self) -> Box<types::StructType> {
-        Box::new(types::StructType { name: self.name.clone() })
+    pub fn get_type(&self) -> Box<types::Type> {
+        let guard = self.fields.read().unwrap();
+        let mut fields = Vec::with_capacity(guard.len());
+        for field in guard.iter() {
+            let name = field.name();
+            let typ = field.get_type();
+            fields.push((name, typ));
+        }
+        Box::new(types::Type::Struct(types::StructType { name: self.name.clone(), fields }))
     }
 }
 
@@ -330,15 +331,15 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn get_type(&self) -> Box<types::FunctionType> {
-        let mut arguments = Vec::<Box<dyn types::Type>>::with_capacity(self.arguments.len());
+    pub fn get_type(&self) -> Box<types::Type> {
+        let mut arguments = Vec::<Box<types::Type>>::with_capacity(self.arguments.len());
 
         for arg in &self.arguments {
             arguments.push(arg.1.get_type());
         }
 
         let result = self.return_type.get_type();
-        Box::new(types::FunctionType { arguments, result })
+        Box::new(types::Type::Function(types::FunctionType { arguments, result }))
     }
 }
 
@@ -379,11 +380,11 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn get_type(&self) -> Box<dyn Type> {
+    pub fn get_type(&self) -> Box<Type> {
         return match self {
             Instruction::IntegerLiteral(_) => builtin::COMPTIME_INT.get_type(),
             Instruction::DeclarationReference(s) => s.declaration.get_type(),
-            Instruction::GetParameter(_) => Box::new(types::UnresolvedType { name: "UnimplementedParamGet".to_string() }),
+            Instruction::GetParameter(_) => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnimplementedParamGet".to_string() })),
             Instruction::FunctionCall(f) => {
                 let ins = f.function.lock().unwrap();
                 match *ins {
@@ -392,26 +393,26 @@ impl Instruction {
                         if let Some(ref dec) = *guard {
                             match **dec {
                                 Declaration::Function(ref h) => h.return_type.get_type(),
-                                _ => Box::new(types::UnresolvedType { name: "UnPointerToFuncBody".to_string() })
+                                _ => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnPointerToFuncBody".to_string() }))
                             }
                         } else {
-                            Box::new(types::UnresolvedType { name: "UnNoFunctionDec".to_string() })
+                            Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnNoFunctionDec".to_string() }))
                         }
                     }
-                    _ => Box::new(types::UnresolvedType { name: "UnDecNotFunc".to_string() })
+                    _ => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnDecNotFunc".to_string() }))
                 }
             }
             Instruction::Return(_)
             | Instruction::Unreachable(_)
             | Instruction::Jump(_)
-            | Instruction::Branch(_) => Box::new(types::PrimitiveType::NoReturn),
-            _ => Box::new(types::UnresolvedType { name: "UnknownInstruction".to_string() })
+            | Instruction::Branch(_) => Box::new(types::Type::Primitive(types::PrimitiveType::NoReturn)),
+            _ => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnknownInstruction".to_string() }))
         };
     }
 
     /// Get type of an instruction in the context of a function or behaviour.
     /// Useful for getting the type of parameters.
-    pub fn get_type_with_context(&self, context: Either<&Box<Function>, &Box<Behaviour>>) -> Box<dyn Type> {
+    pub fn get_type_with_context(&self, context: Either<&Box<Function>, &Box<Behaviour>>) -> Box<Type> {
         match self {
             Instruction::GetParameter(g) => {
                 let name = &g.name;

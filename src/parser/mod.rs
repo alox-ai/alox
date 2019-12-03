@@ -1,8 +1,4 @@
-use std::env::var;
 use std::ops::Range;
-
-use logos::{Logos, Source};
-use logos::internal::LexerInternal;
 
 use lexer::Lexer;
 use lexer::Token;
@@ -28,7 +24,6 @@ impl ParserError {
     pub fn to_string(&self, source: &str) -> String {
         let mut buffer = format!("error: {}\n", self.message);
 
-        let len = source.len();
         let mut line_num = 0;
         let mut index = 0;
         for line in source.lines() {
@@ -147,7 +142,7 @@ pub fn parse_struct(lexer: &mut Lexer, actor: bool) -> Result<Either<Struct, Act
             lexer.unexpected()?;
         }
     }
-    lexer.skip(Token::RightBrace, "Expected closing brace");
+    lexer.skip(Token::RightBrace, "Expected closing brace")?;
 
     if actor {
         Ok(Either::Right(Actor {
@@ -260,7 +255,7 @@ fn parse_variable_declaration(lexer: &mut Lexer) -> Result<VariableDeclaration, 
     // skip let
     lexer.advance();
 
-    lexer.expect(Token::Identifier, "Expected variable name after 'let'");
+    lexer.expect(Token::Identifier, "Expected variable name after 'let'")?;
     let name = lexer.slice().to_string();
     let type_name: Option<(Path, String)>;
     lexer.advance();

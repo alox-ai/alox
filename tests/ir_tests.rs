@@ -136,3 +136,63 @@ actor A:
   let b: Bool
 ")
 }
+
+#[test]
+pub fn methods_in_struct() {
+    check_ir("method_in_struct", "\
+struct X {
+    let x: Int32
+    let y: Float32
+    let b: Bool
+
+    fun fooX(a: Int32): Int32 {
+        return a
+    }
+}
+", "\
+; Module: test::method_in_struct
+struct X:
+  let x: Int32
+  let y: Float32
+  let b: Bool
+  fun @fooX(%a: Int32) -> Int32:
+    block#0:
+      %0 : Int32 = param %a
+      ret %0
+")
+}
+
+#[test]
+pub fn method_in_actor() {
+    check_ir("method_in_actor", "\
+actor A {
+    let x: Int32
+    let y: Float32
+    let b: Bool
+
+    fun fooA(a: Int32): Int32 {
+        return a
+    }
+}
+", "\
+; Module: test::method_in_actor
+actor A:
+  let x: Int32
+  let y: Float32
+  let b: Bool
+  fun @fooA(%a: Int32) -> Int32:
+    block#0:
+      %0 : Int32 = param %a
+      ret %0
+")
+}
+
+#[test]
+pub fn void_function() {
+    check_ir("void_function", "\
+fun test(a: Int32) {
+}", "\
+; Module: test::void_function
+fun @test(%a: Int32) -> Void:
+");
+}

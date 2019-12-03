@@ -1,9 +1,9 @@
-#[macro_use]
-extern crate lazy_static;
-extern crate logos;
 extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 extern crate cuda;
+#[macro_use]
+extern crate lazy_static;
+extern crate logos;
 extern crate rspirv;
 extern crate spirv_headers as spirv;
 
@@ -11,11 +11,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
-use logos::Logos;
-
-use parser::lexer::Token;
-use crate::ir::debug::PrintMode;
 use crate::backend::cranelift::CraneLiftBackend;
+use crate::ir::debug::PrintMode;
 
 pub mod parser;
 pub mod ast;
@@ -54,7 +51,7 @@ fn main() {
         }
     }
     ".to_string();
-    let mut parsed_program = parser::parse(ast::Path::of("test"), "parsed".to_string(), test);
+    let parsed_program = parser::parse(ast::Path::of("test"), "parsed".to_string(), test);
 
     let valid_test = "\
 fun test(a: Int32): Int32 {
@@ -63,8 +60,28 @@ fun test(a: Int32): Int32 {
 
 fun bar(a: Int32): Int32 {
     return test(a)
+}
+
+struct X {
+    let x: Int32
+
+    fun method(a: Int32): Int32 {
+        return bar(a)
+    }
+}
+
+actor A {
+    let x: Int32
+
+    fun method(a: Int32): Int32 {
+        return bar(a)
+    }
+
+    behave do(a: Int32) {
+        let x = 2
+    }
 }".to_string();
-    let mut parsed_valid_test = parser::parse(ast::Path::of("test"), "valid".to_string(), valid_test);
+    let parsed_valid_test = parser::parse(ast::Path::of("test"), "valid".to_string(), valid_test);
 
     let mut add_program = ast::Program {
         path: ast::Path::of("test"),
@@ -296,7 +313,7 @@ fun bar(a: Int32): Int32 {
         printer.print_module(module);
         if module.name == "valid".to_string() {
             let backend = CraneLiftBackend::new();
-            backend.compile_module(module);
+            backend.convert_module(module);
         }
     }
 

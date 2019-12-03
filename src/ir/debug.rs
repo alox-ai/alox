@@ -1,7 +1,6 @@
 use core::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
-use std::env::var;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 
 use crate::ir::*;
 use crate::util::Either;
@@ -191,8 +190,8 @@ impl Printer {
         self.pop();
     }
 
-    pub fn print_block(&mut self, id: usize, mut block: &Arc<Mutex<Block>>, function: Either<&Box<Function>, &Box<Behaviour>>) {
-        let mut block = block.lock().unwrap();
+    pub fn print_block(&mut self, id: usize, block: &Arc<Mutex<Block>>, function: Either<&Box<Function>, &Box<Behaviour>>) {
+        let block = block.lock().unwrap();
         self.print(format!("block#{}:", id));
 
         self.push();
@@ -211,7 +210,7 @@ impl Printer {
         instruction: &Arc<Mutex<Instruction>>,
         function: Either<&Box<Function>, &Box<Behaviour>>,
     ) {
-        let mut instruction = instruction.lock().unwrap();
+        let instruction = instruction.lock().unwrap();
         let ins_type = instruction.get_type_with_context(function).name();
         match *instruction {
             Instruction::DeclarationReference(ref d) => {
