@@ -329,9 +329,9 @@ impl ir::Compiler {
             Some(ir::DeclarationKind::Function),
         );
 
-        let condition_is_true = match *(condition.lock().unwrap()) {
-            ir::Instruction::BooleanLiteral(ref b) => (b.0),
-            _ => false,
+        let literal_condition: Option<bool> = match *(condition.lock().unwrap()) {
+            ir::Instruction::BooleanLiteral(ref b) => Some(b.0),
+            _ => None,
         };
 
         let true_block = block_builder.create_block();
@@ -360,9 +360,14 @@ impl ir::Compiler {
 
         let merge_block = block_builder.create_block();
 
-        if condition_is_true {
-            let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: true_block.clone() }));
-            current_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(jump)));
+        if let Some(literal) = literal_condition {
+            if literal {
+                let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: true_block.clone() }));
+                current_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(jump)));
+            } else {
+                let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: false_block.clone() }));
+                current_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(jump)));
+            }
         } else {
             let branch = ir::Instruction::Branch(Box::new(Branch {
                 condition,
@@ -373,9 +378,12 @@ impl ir::Compiler {
         }
 
         let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: merge_block.clone() }));
-        true_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(jump.clone())));
-        if !condition_is_true {
-            false_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(jump)));
+        if let Some(literal) = literal_condition {
+            if literal {
+                true_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(jump.clone())));
+            } else {
+                false_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(jump)));
+            }
         }
     }
 

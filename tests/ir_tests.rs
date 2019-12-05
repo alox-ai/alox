@@ -247,3 +247,33 @@ fun @test(%a: Bool) -> Int32:
     ret %0");
 }
 
+#[test]
+pub fn if_elif_else_statement() {
+    check_ir("if_elif_else_statement", "\
+fun test(a: Bool): Int32 {
+    if a {
+        return 1
+    } else if false {
+        return 2
+    } else {
+        return 3
+    }
+}", "\
+; Module: test::if_elif_else_statement
+fun @test(%a: Bool) -> Int32:
+  block#0:
+    %0 : Bool = param %a
+    branch %0 block#1 block#2
+  block#1:
+    %0 : ComptimeInt = 1
+    ret %0
+  block#2:
+    %0 : Bool = false
+    jump block#3
+  block#3:
+    %0 : Bool = true
+    jump block#4
+  block#4:
+    %0 : ComptimeInt = 3
+    ret %0");
+}
