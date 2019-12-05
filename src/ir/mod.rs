@@ -4,20 +4,22 @@ use std::sync::{Arc, Mutex, RwLock};
 use crate::ast;
 use crate::ir::types::{PrimitiveType, Type};
 use crate::util::Either;
+use std::borrow::Borrow;
 
 pub mod convert;
 pub mod debug;
 pub mod types;
 pub mod builtin;
+pub mod pass;
 
 // Thread safe reference to a mutable option of a thread safe reference to a declaration
 // acts as a declaration "hole" that needs to be filled
 #[derive(Clone, Debug)]
-pub struct DeclarationContainer(pub Arc<Mutex<Option<Arc<Declaration>>>>);
+pub struct DeclarationContainer(pub Arc<Mutex<Option<Arc<RwLock<Declaration>>>>>);
 
 impl DeclarationContainer {
     pub fn from(declaration: Declaration) -> Self {
-        Self(Arc::new(Mutex::new(Some(Arc::new(declaration)))))
+        Self(Arc::new(Mutex::new(Some(Arc::new(RwLock::new(declaration))))))
     }
 
     pub fn empty() -> Self {
@@ -29,7 +31,7 @@ impl DeclarationContainer {
         if let Some(ref self_dec) = *self_guard {
             let other_guard = other.0.lock().unwrap();
             if let Some(ref other_dec) = *other_guard {
-                return self_dec.is_same_type(other_dec);
+                return self_dec.read().unwrap().is_same_type(other_dec.read().unwrap().borrow());
             }
         }
         false
@@ -38,7 +40,7 @@ impl DeclarationContainer {
     pub fn name(&self) -> String {
         let guard = self.0.lock().unwrap();
         if let Some(ref dec) = *guard {
-            return dec.name();
+            return dec.read().unwrap().name();
         }
         String::from("notfound")
     }
@@ -46,7 +48,7 @@ impl DeclarationContainer {
     pub fn get_type(&self) -> Box<Type> {
         let guard = self.0.lock().unwrap();
         if let Some(ref dec) = *guard {
-            return dec.get_type();
+            return dec.read().unwrap().get_type();
         }
         Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnresolvedReference".to_string() }))
     }
@@ -142,7 +144,7 @@ pub struct Module {
     /// path doesn't contain the module's name
     pub path: ast::Path,
     pub name: String,
-    pub declarations: Vec<Arc<Declaration>>,
+    pub declarations: Vec<Arc<RwLock<Declaration>>>,
 }
 
 impl Module {
@@ -150,16 +152,16 @@ impl Module {
         self.path.append(self.name.clone())
     }
 
-    pub fn resolve(&self, name: String, kind: Option<DeclarationKind>) -> Option<Arc<Declaration>> {
+    pub fn resolve(&self, name: String, kind: Option<DeclarationKind>) -> Option<Arc<RwLock<Declaration>>> {
         if let Some(kind) = kind {
             for declaration in self.declarations.iter() {
-                if declaration.is_declaration_kind(kind) && declaration.name() == name {
+                if declaration.read().unwrap().is_declaration_kind(kind) && declaration.read().unwrap().name() == name {
                     return Some(declaration.clone());
                 }
             }
         } else {
             for declaration in self.declarations.iter() {
-                if declaration.name() == name {
+                if declaration.read().unwrap().name() == name {
                     return Some(declaration.clone());
                 }
             }
@@ -363,6 +365,14 @@ impl Block {
     }
 
     pub fn add_instruction(&mut self, instruction: Arc<Mutex<Instruction>>) {
+        // don't add the instruction to this block if it already has an instruction
+        // that doesn't return, like Return, Branch, Jump, etc
+        for instruction in self.instructions.iter() {
+            match *instruction.lock().unwrap().get_type() {
+                Type::Primitive(PrimitiveType::NoReturn) => return,
+                _ => {}
+            }
+        }
         self.instructions.push(instruction);
     }
 }
@@ -370,6 +380,7 @@ impl Block {
 #[derive(Clone, Debug)]
 pub enum Instruction {
     Unreachable(String),
+    BooleanLiteral(Box<BooleanLiteral>),
     IntegerLiteral(Box<IntegerLiteral>),
     DeclarationReference(Box<DeclarationReference>),
     GetParameter(Box<GetParameter>),
@@ -382,6 +393,7 @@ pub enum Instruction {
 impl Instruction {
     pub fn get_type(&self) -> Box<Type> {
         return match self {
+            Instruction::BooleanLiteral(_) => builtin::BOOL.get_type(),
             Instruction::IntegerLiteral(_) => builtin::COMPTIME_INT.get_type(),
             Instruction::DeclarationReference(s) => s.declaration.get_type(),
             Instruction::GetParameter(_) => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnimplementedParamGet".to_string() })),
@@ -391,7 +403,7 @@ impl Instruction {
                     Instruction::DeclarationReference(ref f) => {
                         let guard = f.declaration.0.lock().unwrap();
                         if let Some(ref dec) = *guard {
-                            match **dec {
+                            match *dec.read().unwrap() {
                                 Declaration::Function(ref h) => h.return_type.get_type(),
                                 _ => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnPointerToFuncBody".to_string() }))
                             }
@@ -440,6 +452,9 @@ impl Instruction {
 }
 
 // -- INSTRUCTIONS -- \\
+
+#[derive(Clone, Debug)]
+pub struct BooleanLiteral(pub bool);
 
 #[derive(Clone, Debug)]
 pub struct IntegerLiteral(pub i64);

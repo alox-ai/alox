@@ -19,6 +19,10 @@ pub enum Token {
     #[token = "return"] Return,
     #[token = "let"] Let,
     #[token = "var"] Var,
+    #[token = "if"] If,
+    #[token = "else"] Else,
+    #[token = "true"] True,
+    #[token = "false"] False,
 
     // symbols
     #[token = "->"] ThinArrow,

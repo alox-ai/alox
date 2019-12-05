@@ -4,12 +4,17 @@ use alox::ast::Path;
 use alox::ir::debug::{Printer, PrintMode};
 use alox::parser;
 use alox::ir::Compiler;
+use alox::ir::pass::{DeadBranchRemovalPass, Pass};
 
-pub fn check_ir(test_name: &str, module: &str, expected_ir: &str) {
+pub fn check_ir(test_name: &str, code: &str, expected_ir: &str) {
     // parse the module and compiler it to ir
-    let mut parsed_program = parser::parse(Path::of("test"), test_name.to_string(), module.to_string());
+    let mut parsed_program = parser::parse(Path::of("test"), test_name.to_string(), code.to_string());
     let compiler = Compiler::new();
-    compiler.add_module(compiler.generate_ir(parsed_program.unwrap()));
+
+    let module = compiler.generate_ir(parsed_program.unwrap());
+    let pass = DeadBranchRemovalPass {};
+    pass.pass(&module);
+    compiler.add_module(module);
 
     // print the module and store it in the buffer
     let mut printer = Printer::new(PrintMode::Buffer);
@@ -196,3 +201,49 @@ fun test(a: Int32) {
 fun @test(%a: Int32) -> Void:
 ");
 }
+
+#[test]
+pub fn if_statement() {
+    check_ir("if_statement", "\
+fun test(a: Int32): Int32 {
+    if true {
+        return a
+    }
+    return 1234
+}", "\
+; Module: test::if_statement
+fun @test(%a: Int32) -> Int32:
+  block#0:
+    %0 : Bool = true
+    jump block#1
+  block#1:
+    %0 : Int32 = param %a
+    ret %0");
+}
+
+#[test]
+pub fn if_else_statement() {
+    check_ir("if_else_statement", "\
+fun test(a: Bool): Int32 {
+    if a {
+        return 1
+    } else {
+        return 0
+    }
+}", "\
+; Module: test::if_else_statement
+fun @test(%a: Bool) -> Int32:
+  block#0:
+    %0 : Bool = param %a
+    branch %0 block#1 block#2
+  block#1:
+    %0 : ComptimeInt = 1
+    ret %0
+  block#2:
+    %0 : Bool = true
+    jump block#3
+  block#3:
+    %0 : ComptimeInt = 0
+    ret %0");
+}
+

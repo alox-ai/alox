@@ -53,12 +53,12 @@ impl CraneLiftBackend {
 
     pub fn convert_module(&self, module: &Module) {
         for declaration in &module.declarations {
-            self.convert_declaration(declaration, None);
+            self.convert_declaration(&*declaration.read().unwrap(), None);
         }
     }
 
-    fn convert_declaration(&self, dec: &Arc<Declaration>, context: Option<Either<&Box<ir::Struct>, &Box<ir::Actor>>>) {
-        match **dec {
+    fn convert_declaration(&self, dec: &Declaration, context: Option<Either<&Box<ir::Struct>, &Box<ir::Actor>>>) {
+        match dec {
             Declaration::Function(ref function) => {
                 self.convert_function(Either::Left(function), context);
             }
@@ -70,7 +70,7 @@ impl CraneLiftBackend {
                 for dec in guard.iter() {
                     let guard = dec.0.lock().unwrap();
                     if let Some(ref dec) = *guard {
-                        self.convert_declaration(dec, Some(Either::Left(struc)));
+                        self.convert_declaration(&*dec.read().unwrap(), Some(Either::Left(struc)));
                     }
                 }
             }
@@ -79,7 +79,7 @@ impl CraneLiftBackend {
                 for dec in guard.iter() {
                     let guard = dec.0.lock().unwrap();
                     if let Some(ref dec) = *guard {
-                        self.convert_declaration(dec, Some(Either::Right(actor)));
+                        self.convert_declaration(&*dec.read().unwrap(), Some(Either::Right(actor)));
                     }
                 }
 
@@ -87,7 +87,7 @@ impl CraneLiftBackend {
                 for dec in guard.iter() {
                     let guard = dec.0.lock().unwrap();
                     if let Some(ref dec) = *guard {
-                        self.convert_declaration(dec, Some(Either::Right(actor)));
+                        self.convert_declaration(&*dec.read().unwrap(), Some(Either::Right(actor)));
                     }
                 }
             }

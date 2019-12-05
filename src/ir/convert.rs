@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use crate::ast;
 use crate::ir;
+use crate::ir::Branch;
 
 impl ir::Compiler {
     pub fn generate_ir(&self, program: ast::Program) -> ir::Module {
@@ -11,7 +12,7 @@ impl ir::Compiler {
         let name = program.file_name;
         let path = program.path;
         let current_path = &path.append(name.clone());
-        let mut completed_declarations: Vec<Arc<ir::Declaration>> = vec![];
+        let mut completed_declarations: Vec<Arc<RwLock<ir::Declaration>>> = vec![];
 
         // go over each node and generate the ir
         for node in program.nodes {
@@ -63,7 +64,7 @@ impl ir::Compiler {
                         behaviours: Arc::new(RwLock::new(behaviours)),
                         functions: Arc::new(RwLock::new(functions)),
                     };
-                    completed_declarations.push(Arc::new(ir::Declaration::Actor(Box::new(actor))));
+                    completed_declarations.push(Arc::new(RwLock::new(ir::Declaration::Actor(Box::new(actor)))));
                 }
                 ast::Node::Struct(s) => {
                     let mut fields = Vec::with_capacity(s.fields.len());
@@ -103,7 +104,7 @@ impl ir::Compiler {
                         traits: Arc::new(RwLock::new(traits)),
                         functions: Arc::new(RwLock::new(functions)),
                     };
-                    completed_declarations.push(Arc::new(ir::Declaration::Struct(Box::new(strct))));
+                    completed_declarations.push(Arc::new(RwLock::new(ir::Declaration::Struct(Box::new(strct)))));
                 }
                 ast::Node::Trait(_) => {}
                 ast::Node::Function(f) => {
@@ -112,7 +113,7 @@ impl ir::Compiler {
                         &completed_declarations,
                         f.as_ref(),
                     );
-                    completed_declarations.push(Arc::new(function));
+                    completed_declarations.push(Arc::new(RwLock::new(function)));
                 }
                 ast::Node::VariableDeclaration(_) => {}
             }
@@ -128,7 +129,7 @@ impl ir::Compiler {
     pub fn generate_ir_behaviour(
         &self,
         current_path: &ast::Path,
-        declarations: &Vec<Arc<ir::Declaration>>,
+        declarations: &Vec<Arc<RwLock<ir::Declaration>>>,
         b: &ast::Behaviour,
     ) -> ir::Declaration {
         let name = b.name.clone();
@@ -152,14 +153,13 @@ impl ir::Compiler {
             );
         }
 
-        let blocks = block_builder.blocks;
-        let mut blocks_wrapped = Vec::with_capacity(blocks.len());
-        for b in blocks {
-            // this might come back to bite me
-            if b.instructions.len() > 0 {
-                blocks_wrapped.push(Arc::new(Mutex::new(b)));
+        let mut blocks = Vec::with_capacity(block_builder.blocks.len());
+        for block in block_builder.blocks {
+            if block.lock().unwrap().instructions.len() > 0 {
+                blocks.push(block.clone());
             }
         }
+
         let mut arguments = Vec::with_capacity(b.arguments.len());
         for (name, type_path) in b.arguments.iter() {
             let typ = self.resolve(
@@ -173,14 +173,14 @@ impl ir::Compiler {
         ir::Declaration::Behaviour(Box::new(ir::Behaviour {
             name,
             arguments,
-            blocks: blocks_wrapped,
+            blocks,
         }))
     }
 
     pub fn generate_ir_function(
         &self,
         current_path: &ast::Path,
-        declarations: &Vec<Arc<ir::Declaration>>,
+        declarations: &Vec<Arc<RwLock<ir::Declaration>>>,
         f: &ast::Function,
     ) -> ir::Declaration {
         let name = f.name.clone();
@@ -204,14 +204,13 @@ impl ir::Compiler {
             );
         }
 
-        let blocks = block_builder.blocks;
-        let mut blocks_wrapped = Vec::with_capacity(blocks.len());
-        for b in blocks {
-            // this might come back to bite me
-            if b.instructions.len() > 0 {
-                blocks_wrapped.push(Arc::new(Mutex::new(b)));
+        let mut blocks = Vec::with_capacity(block_builder.blocks.len());
+        for block in block_builder.blocks {
+            if block.lock().unwrap().instructions.len() > 0 {
+                blocks.push(block.clone());
             }
         }
+
         let mut arguments = Vec::with_capacity(f.arguments.len());
         for (name, type_path) in f.arguments.iter() {
             let typ = self.resolve(
@@ -232,16 +231,16 @@ impl ir::Compiler {
             name,
             arguments,
             return_type,
-            blocks: blocks_wrapped,
+            blocks,
         }))
     }
 
     pub fn generate_ir_statement(
         &self,
         current_path: &ast::Path,
-        completed_declarations: &Vec<Arc<ir::Declaration>>,
-        lvt: &mut LocalVariableTable,
-        block_builder: &mut BlockBuilder,
+        completed_declarations: &Vec<Arc<RwLock<ir::Declaration>>>,
+        mut lvt: &mut LocalVariableTable,
+        mut block_builder: &mut BlockBuilder,
         statement: &ast::Statement,
     ) {
         match statement {
@@ -305,19 +304,94 @@ impl ir::Compiler {
                 ))));
                 block_builder.add_instruction(call_ins);
             }
+            ast::Statement::If(if_statement) => {
+                self.generate_ir_if_statement(current_path, completed_declarations, &mut lvt, &mut block_builder, &if_statement)
+            }
+        }
+    }
+
+    fn generate_ir_if_statement(
+        &self,
+        current_path: &ast::Path,
+        completed_declarations: &Vec<Arc<RwLock<ir::Declaration>>>,
+        mut lvt: &mut LocalVariableTable,
+        mut block_builder: &mut BlockBuilder,
+        if_statement: &Box<ast::IfStatement>,
+    ) {
+        let current_block = block_builder.current_block().clone();
+
+        let condition = self.generate_ir_expression(
+            current_path,
+            completed_declarations,
+            lvt,
+            current_block.clone(),
+            &if_statement.condition,
+            Some(ir::DeclarationKind::Function),
+        );
+
+        let condition_is_true = match *(condition.lock().unwrap()) {
+            ir::Instruction::BooleanLiteral(ref b) => (b.0),
+            _ => false,
+        };
+
+        let true_block = block_builder.create_block();
+
+        for statement in if_statement.block.iter() {
+            self.generate_ir_statement(
+                current_path,
+                completed_declarations,
+                &mut lvt,
+                &mut block_builder,
+                statement,
+            );
+        }
+
+        let false_block = block_builder.create_block();
+
+        if let Some(elseif) = &if_statement.elseif {
+            self.generate_ir_if_statement(
+                current_path,
+                completed_declarations,
+                &mut lvt,
+                &mut block_builder,
+                elseif,
+            );
+        }
+
+        let merge_block = block_builder.create_block();
+
+        if condition_is_true {
+            let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: true_block.clone() }));
+            current_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(jump)));
+        } else {
+            let branch = ir::Instruction::Branch(Box::new(Branch {
+                condition,
+                true_block: true_block.clone(),
+                false_block: false_block.clone(),
+            }));
+            current_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(branch)));
+        }
+
+        let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: merge_block.clone() }));
+        true_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(jump.clone())));
+        if !condition_is_true {
+            false_block.lock().unwrap().add_instruction(Arc::new(Mutex::new(jump)));
         }
     }
 
     pub fn generate_ir_expression(
         &self,
         current_path: &ast::Path,
-        completed_declarations: &Vec<Arc<ir::Declaration>>,
+        completed_declarations: &Vec<Arc<RwLock<ir::Declaration>>>,
         lvt: &mut LocalVariableTable,
-        block: &mut ir::Block,
+        block: Arc<Mutex<ir::Block>>,
         expression: &ast::Expression,
         declaration_context: Option<ir::DeclarationKind>,
     ) -> Arc<Mutex<ir::Instruction>> {
         let ins = match expression {
+            ast::Expression::BooleanLiteral(b) => Arc::new(Mutex::new(
+                ir::Instruction::BooleanLiteral(Box::new(ir::BooleanLiteral(b.as_ref().0))),
+            )),
             ast::Expression::IntegerLiteral(i) => Arc::new(Mutex::new(
                 ir::Instruction::IntegerLiteral(Box::new(ir::IntegerLiteral(i.as_ref().0))),
             )),
@@ -326,7 +400,7 @@ impl ir::Compiler {
                     current_path,
                     completed_declarations,
                     lvt,
-                    block,
+                    block.clone(),
                     &call.function,
                     Some(ir::DeclarationKind::Function),
                 );
@@ -336,7 +410,7 @@ impl ir::Compiler {
                         current_path,
                         completed_declarations,
                         lvt,
-                        block,
+                        block.clone(),
                         argument,
                         None,
                     );
@@ -374,7 +448,7 @@ impl ir::Compiler {
                         // search the current module declarations for it
                         let mut found_dec = None;
                         for declaration in completed_declarations.iter() {
-                            if declaration.name() == name {
+                            if declaration.read().unwrap().name() == name {
                                 found_dec = Some(Arc::new(Mutex::new(
                                     ir::Instruction::DeclarationReference(Box::new(
                                         ir::DeclarationReference {
@@ -407,38 +481,41 @@ impl ir::Compiler {
                 e.name()
             )))),
         };
-        block.add_instruction(ins.clone());
+        block.lock().unwrap().add_instruction(ins.clone());
         ins
     }
 }
 
 pub struct BlockBuilder {
-    blocks: Vec<ir::Block>,
+    blocks: Vec<Arc<Mutex<ir::Block>>>,
     current_block: usize,
 }
 
 impl BlockBuilder {
     pub fn new() -> Self {
         let mut blocks = Vec::new();
-        blocks.push(ir::Block::new());
+        blocks.push(Arc::new(Mutex::new(ir::Block::new())));
         Self {
             blocks,
             current_block: 0,
         }
     }
 
-    pub fn current_block(&mut self) -> &mut ir::Block {
-        self.blocks.get_mut(self.current_block).unwrap()
+    pub fn current_block(&mut self) -> Arc<Mutex<ir::Block>> {
+        self.blocks.get_mut(self.current_block).unwrap().clone()
     }
 
-    pub fn create_block(&mut self) -> &ir::Block {
-        self.blocks.push(ir::Block::new());
+    pub fn create_block(&mut self) -> Arc<Mutex<ir::Block>> {
+        self.blocks.push(Arc::new(Mutex::new(ir::Block::new())));
+        self.current_block = self.blocks.len() - 1;
         self.current_block()
     }
 
     pub fn add_instruction(&mut self, instruction: Arc<Mutex<ir::Instruction>>) {
         self.blocks
             .get_mut(self.current_block)
+            .unwrap()
+            .lock()
             .unwrap()
             .instructions
             .push(instruction);

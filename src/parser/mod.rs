@@ -138,7 +138,6 @@ pub fn parse_struct(lexer: &mut Lexer, actor: bool) -> Result<Either<Struct, Act
         } else if lexer.has(Token::Let) {
             fields.push(parse_variable_declaration(lexer)?);
         } else {
-            println!("test");
             lexer.unexpected()?;
         }
     }
@@ -247,8 +246,53 @@ pub fn parse_statement(lexer: &mut Lexer) -> Result<Statement, ParserError> {
         return Ok(Statement::Return(Box::new(Return { expression })));
     } else if lexer.has(Token::Let) {
         return Ok(Statement::VariableDeclaration(Box::new(parse_variable_declaration(lexer)?)));
+    } else if lexer.has(Token::If) {
+        lexer.advance(); // skip if
+        return Ok(Statement::If(parse_if_statement(lexer)?));
     }
     lexer.unexpected()
+}
+
+fn parse_if_statement(lexer: &mut Lexer) -> Result<Box<IfStatement>, ParserError> {
+    let expression = parse_expression(lexer)?;
+    lexer.skip(Token::LeftBrace, "Expected block after if expression")?;
+
+    // parse statements
+    let mut statements = vec![];
+    while !lexer.has(Token::RightBrace) {
+        statements.push(parse_statement(lexer)?);
+    }
+    lexer.advance();
+
+    let mut if_statement = IfStatement {
+        condition: expression,
+        block: statements,
+        elseif: None,
+    };
+
+    if lexer.has(Token::Else) {
+        lexer.advance();
+        if lexer.has(Token::If) {
+            lexer.advance();
+            if_statement.elseif = Some(parse_if_statement(lexer)?);
+        } else if lexer.has(Token::LeftBrace) {
+            lexer.advance();
+            let mut statements = vec![];
+            while !lexer.has(Token::RightBrace) {
+                statements.push(parse_statement(lexer)?);
+            }
+            lexer.advance();
+            if_statement.elseif = Some(Box::new(IfStatement {
+                condition: Expression::BooleanLiteral(Box::new(BooleanLiteral(true))),
+                block: statements,
+                elseif: None,
+            }));
+        } else {
+            lexer.unexpected()?;
+        }
+    }
+
+    Ok(Box::new(if_statement))
 }
 
 fn parse_variable_declaration(lexer: &mut Lexer) -> Result<VariableDeclaration, ParserError> {
@@ -283,7 +327,13 @@ fn parse_variable_declaration(lexer: &mut Lexer) -> Result<VariableDeclaration, 
 }
 
 pub fn parse_expression(lexer: &mut Lexer) -> Result<Expression, ParserError> {
-    if lexer.has(Token::IntegerLiteral) {
+    if lexer.has(Token::True) {
+        lexer.advance();
+        return Ok(Expression::BooleanLiteral(Box::new(BooleanLiteral(true))));
+    } else if lexer.has(Token::False) {
+        lexer.advance();
+        return Ok(Expression::BooleanLiteral(Box::new(BooleanLiteral(false))));
+    } else if lexer.has(Token::IntegerLiteral) {
         let num = lexer.slice().parse::<i64>().unwrap();
         lexer.advance();
         return Ok(Expression::IntegerLiteral(Box::new(IntegerLiteral(num))));

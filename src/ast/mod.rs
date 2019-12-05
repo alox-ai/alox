@@ -36,6 +36,7 @@ pub enum Node {
 
 #[derive(Clone, Debug)]
 pub enum Expression {
+    BooleanLiteral(Box<BooleanLiteral>),
     IntegerLiteral(Box<IntegerLiteral>),
     VariableReference(Box<VariableReference>),
     FunctionCall(Box<FunctionCall>),
@@ -44,6 +45,7 @@ pub enum Expression {
 impl Expression {
     pub fn name(&self) -> String {
         match self {
+            Expression::BooleanLiteral(_) => "BooleanLiteral",
             Expression::IntegerLiteral(_) => "IntegerLiteral",
             Expression::VariableReference(_) => "VariableReference",
             Expression::FunctionCall(_) => "FunctionCall",
@@ -55,6 +57,7 @@ impl Expression {
 #[derive(Clone, Debug)]
 pub enum Statement {
     VariableDeclaration(Box<VariableDeclaration>),
+    If(Box<IfStatement>),
     Return(Box<Return>),
     FunctionCall(Box<FunctionCall>),
 }
