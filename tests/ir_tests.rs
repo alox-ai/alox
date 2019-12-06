@@ -217,8 +217,8 @@ fun @test(%a: Int32) -> Int32:
     %0 : Bool = true
     jump block#1
   block#1:
-    %0 : Int32 = param %a
-    ret %0");
+    %2 : Int32 = param %a
+    ret %2");
 }
 
 #[test]
@@ -237,14 +237,14 @@ fun @test(%a: Bool) -> Int32:
     %0 : Bool = param %a
     branch %0 block#1 block#2
   block#1:
-    %0 : ComptimeInt = 1
-    ret %0
+    %2 : ComptimeInt = 1
+    ret %2
   block#2:
-    %0 : Bool = true
+    %4 : Bool = true
     jump block#3
   block#3:
-    %0 : ComptimeInt = 0
-    ret %0");
+    %6 : ComptimeInt = 0
+    ret %6");
 }
 
 #[test]
@@ -265,15 +265,112 @@ fun @test(%a: Bool) -> Int32:
     %0 : Bool = param %a
     branch %0 block#1 block#2
   block#1:
-    %0 : ComptimeInt = 1
-    ret %0
+    %2 : ComptimeInt = 1
+    ret %2
   block#2:
-    %0 : Bool = false
+    %4 : Bool = false
     jump block#3
   block#3:
-    %0 : Bool = true
+    %6 : Bool = true
     jump block#4
   block#4:
-    %0 : ComptimeInt = 3
-    ret %0");
+    %8 : ComptimeInt = 3
+    ret %8");
+}
+
+#[test]
+pub fn if_many_elif_statement() {
+    check_ir("if_many_elif_statement", "\
+fun foo(a: Bool, b: Bool, c: Bool, d: Bool, e: Bool): Int32 {
+    if a {
+        return 1
+    } else if b {
+        return 2
+    } else if c {
+        return 3
+    } else if d {
+        return 4
+    } else if e {
+        return 5
+    } else {
+        return 6
+    }
+}", "\
+; Module: test::if_many_elif_statement
+fun @foo(%a: Bool, %b: Bool, %c: Bool, %d: Bool, %e: Bool) -> Int32:
+  block#0:
+    %0 : Bool = param %a
+    branch %0 block#1 block#2
+  block#1:
+    %2 : ComptimeInt = 1
+    ret %2
+  block#2:
+    %4 : Bool = param %b
+    branch %4 block#3 block#4
+  block#3:
+    %6 : ComptimeInt = 2
+    ret %6
+  block#4:
+    %8 : Bool = param %c
+    branch %8 block#5 block#6
+  block#5:
+    %10 : ComptimeInt = 3
+    ret %10
+  block#6:
+    %12 : Bool = param %d
+    branch %12 block#7 block#8
+  block#7:
+    %14 : ComptimeInt = 4
+    ret %14
+  block#8:
+    %16 : Bool = param %e
+    branch %16 block#9 block#10
+  block#9:
+    %18 : ComptimeInt = 5
+    ret %18
+  block#10:
+    %20 : Bool = true
+    jump block#11
+  block#11:
+    %22 : ComptimeInt = 6
+    ret %22");
+}
+
+#[test]
+pub fn if_in_if_statement() {
+    check_ir("if_in_if_statement", "\
+fun foo(a: Bool, b: Bool): Int32 {
+    if a {
+        if b {
+            return 1
+        } else {
+            return 2
+        }
+    } else {
+        return 3
+    }
+}", "\
+; Module: test::if_in_if_statement
+fun @foo(%a: Bool, %b: Bool) -> Int32:
+  block#0:
+    %0 : Bool = param %a
+    branch %0 block#1 block#5
+  block#1:
+    %2 : Bool = param %b
+    branch %2 block#2 block#3
+  block#2:
+    %4 : ComptimeInt = 1
+    ret %4
+  block#3:
+    %6 : Bool = true
+    jump block#4
+  block#4:
+    %8 : ComptimeInt = 2
+    ret %8
+  block#5:
+    %10 : Bool = true
+    jump block#6
+  block#6:
+    %12 : ComptimeInt = 3
+    ret %12");
 }

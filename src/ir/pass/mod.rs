@@ -1,21 +1,43 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc, RwLock};
 
 use crate::ir::{Block, Declaration, Function, Module, Instruction};
 
 pub trait Pass {
     fn pass(&self, module: &Module) {
         for dec in module.declarations.iter() {
-            match *dec.write().unwrap() {
-                Declaration::Function(ref mut function) => {
-                    self.pass_function(function);
-                }
-                Declaration::Behaviour(_) => {}
-                Declaration::Actor(_) => {}
-                Declaration::Struct(_) => {}
-                Declaration::Trait(_) => {}
-                Declaration::Variable(_) => {}
-                Declaration::Type(_) => {}
+            self.pass_declaration(dec);
+        }
+    }
+
+    fn pass_declaration(&self, dec: &Arc<RwLock<Declaration>>) {
+        match *dec.write().unwrap() {
+            Declaration::Function(ref mut function) => {
+                self.pass_function(function);
             }
+            Declaration::Behaviour(_) => {}
+            Declaration::Actor(ref mut actor) => {
+                for function in actor.functions.write().unwrap().iter() {
+                    if let Some(ref func) = *function.0.lock().unwrap() {
+                        self.pass_declaration(func);
+                    }
+                }
+
+                for behaviour in actor.behaviours.write().unwrap().iter() {
+                    if let Some(ref behave) = *behaviour.0.lock().unwrap() {
+                        self.pass_declaration(behave);
+                    }
+                }
+            }
+            Declaration::Struct(ref mut struc) => {
+                for function in struc.functions.write().unwrap().iter() {
+                    if let Some(ref func) = *function.0.lock().unwrap() {
+                        self.pass_declaration(func);
+                    }
+                }
+            }
+            Declaration::Trait(_) => {}
+            Declaration::Variable(_) => {}
+            Declaration::Type(_) => {}
         }
     }
     fn pass_function(&self, function: &mut Box<Function>);

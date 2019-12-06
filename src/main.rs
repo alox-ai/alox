@@ -1,5 +1,7 @@
 extern crate cranelift_codegen;
+extern crate cranelift_faerie;
 extern crate cranelift_frontend;
+extern crate cranelift_module;
 extern crate cuda;
 #[macro_use]
 extern crate lazy_static;
@@ -13,6 +15,7 @@ use std::time::Instant;
 
 use crate::backend::cranelift::CraneLiftBackend;
 use crate::ir::debug::PrintMode;
+use crate::ir::pass::{DeadBranchRemovalPass, Pass};
 
 pub mod parser;
 pub mod ast;
@@ -54,8 +57,14 @@ fn main() {
     let parsed_program = parser::parse(ast::Path::of("test"), "parsed".to_string(), test);
 
     let valid_test = "\
-fun test(a: Int32): Int32 {
-    return a
+fun test(a: Bool, b: Bool): Int32 {
+    if a {
+        return 0
+    } else if b {
+        return 1
+    } else {
+        return 2
+    }
 }
 
 fun bar(a: Int32): Int32 {
@@ -302,7 +311,10 @@ actor A {
     }
     match parsed_valid_test {
         Some(parsed_valid_test) => {
-            compiler.add_module(compiler.generate_ir(parsed_valid_test));
+            let module = compiler.generate_ir(parsed_valid_test);
+            let pass = DeadBranchRemovalPass {};
+            pass.pass(&module);
+            compiler.add_module(module);
         }
         None => {}
     }

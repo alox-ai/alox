@@ -160,13 +160,14 @@ impl Printer {
         self.push();
 
         if behaviour.blocks.len() > 0 {
+            let mut instruction_ids: HashMap<*const Mutex<Instruction>, usize> = HashMap::new();
             let mut block_ids: HashMap<*const Mutex<Block>, usize> = HashMap::new();
             // put block ids in map
             for (id, block) in behaviour.blocks.iter().enumerate() {
                 block_ids.insert(block.as_ref() as *const Mutex<Block>, id);
             }
             for (id, block) in behaviour.blocks.iter().enumerate() {
-                self.print_block(&block_ids, id, block, Either::Right(behaviour));
+                self.print_block(&mut instruction_ids, &block_ids, id, block, Either::Right(behaviour));
             }
         }
         self.pop();
@@ -189,13 +190,15 @@ impl Printer {
         self.push();
 
         if function.blocks.len() > 0 {
+            let mut instruction_ids: HashMap<*const Mutex<Instruction>, usize> = HashMap::new();
             let mut block_ids: HashMap<*const Mutex<Block>, usize> = HashMap::new();
             // put block ids in map
             for (id, block) in function.blocks.iter().enumerate() {
                 block_ids.insert(block.as_ref() as *const Mutex<Block>, id);
             }
+
             for (id, block) in function.blocks.iter().enumerate() {
-                self.print_block(&block_ids, id, block, Either::Left(function));
+                self.print_block(&mut instruction_ids, &block_ids, id, block, Either::Left(function));
             }
         }
         self.pop();
@@ -203,6 +206,7 @@ impl Printer {
 
     pub fn print_block(
         &mut self,
+        instruction_ids: &mut HashMap<*const Mutex<Instruction>, usize>,
         block_ids: &HashMap<*const Mutex<Block>, usize>,
         id: usize,
         block: &Arc<Mutex<Block>>,
@@ -212,8 +216,8 @@ impl Printer {
         self.print(format!("block#{}:", id));
 
         self.push();
-        let mut instruction_ids: HashMap<*const Mutex<Instruction>, usize> = HashMap::new();
-        for (id, instruction) in block.instructions.iter().enumerate() {
+        for instruction in block.instructions.iter() {
+            let id = instruction_ids.len();
             instruction_ids.insert(instruction.as_ref() as *const Mutex<Instruction>, id);
             self.print_instruction(&instruction_ids, block_ids, id, instruction, function);
         }
