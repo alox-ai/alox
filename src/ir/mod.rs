@@ -1,10 +1,10 @@
 use std::fmt::{Display, Error, Formatter};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::RwLock;
 
 use crate::ast;
 use crate::ir::types::{PrimitiveType, Type};
 use crate::util::Either;
-use std::borrow::Borrow;
+use std::collections::HashMap;
 
 pub mod convert;
 pub mod debug;
@@ -12,161 +12,85 @@ pub mod types;
 pub mod builtin;
 pub mod pass;
 
-// Thread safe reference to a mutable option of a thread safe reference to a declaration
-// acts as a declaration "hole" that needs to be filled
-#[derive(Clone, Debug)]
-pub struct DeclarationContainer(pub Arc<Mutex<Option<Arc<RwLock<Declaration>>>>>);
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct DeclarationId(pub String);
 
-impl DeclarationContainer {
-    pub fn from(declaration: Declaration) -> Self {
-        Self(Arc::new(Mutex::new(Some(Arc::new(RwLock::new(declaration))))))
-    }
-
-    pub fn empty() -> Self {
-        Self(Arc::new(Mutex::new(None)))
-    }
-
-    pub fn is_same_type(&self, other: &Self) -> bool {
-        let self_guard = self.0.lock().unwrap();
-        if let Some(ref self_dec) = *self_guard {
-            let other_guard = other.0.lock().unwrap();
-            if let Some(ref other_dec) = *other_guard {
-                return self_dec.read().unwrap().is_same_type(other_dec.read().unwrap().borrow());
-            }
+impl DeclarationId {
+    pub fn from(module: Option<&Module>, declaration: &Declaration) -> Self {
+        let declaration_id = declaration.name();
+        if let Some(module) = module {
+            let module_id = module.full_path().to_string();
+            DeclarationId(format!("{}::{}", module_id, declaration_id))
+        } else {
+            DeclarationId(declaration_id)
         }
-        false
+    }
+
+    pub fn get_type(&self) -> Box<types::Type> {
+        Box::new(types::Type::Unresolved(types::UnresolvedType { name: self.0.clone() }))
     }
 
     pub fn name(&self) -> String {
-        let guard = self.0.lock().unwrap();
-        if let Some(ref dec) = *guard {
-            return dec.read().unwrap().name();
-        }
-        String::from("notfound")
-    }
-
-    pub fn get_type(&self) -> Box<Type> {
-        let guard = self.0.lock().unwrap();
-        if let Some(ref dec) = *guard {
-            return dec.read().unwrap().get_type();
-        }
-        Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnresolvedReference".to_string() }))
+        self.0.split("::").last().unwrap().to_string()
     }
 }
 
-pub struct Compiler {
-    pub modules: RwLock<Vec<Module>>,
-    pub resolutions_needed: RwLock<
-        Vec<(
-            ast::Path,
-            String,
-            Option<DeclarationKind>,
-            DeclarationContainer,
-        )>,
-    >,
+pub struct Compiler<'compiler> {
+    pub modules: RwLock<Vec<Module<'compiler>>>,
+    pub declaration_bank: RwLock<HashMap<DeclarationId, usize>>,
 }
 
-impl Compiler {
-    pub fn new() -> Compiler {
+impl<'compiler> Compiler<'compiler> {
+    pub fn new() -> Compiler<'compiler> {
         Compiler {
             modules: RwLock::new(Vec::with_capacity(5)),
-            resolutions_needed: RwLock::new(Vec::with_capacity(20)),
+            declaration_bank: RwLock::new(HashMap::new()),
         }
     }
 
-    pub fn add_module(&self, module: Module) {
-        // update references that are waiting for this module
-        let path = module.path.clone().append(module.name.clone());
-        let resolutions = self.resolutions_needed.read().unwrap();
-        let mut completed_resolutions = Vec::with_capacity(5);
-
-        // go through each needed resolution
-        for (i, needed_resolution) in resolutions.iter().enumerate() {
-            // this needs the module we are adding
-            if needed_resolution.0 == path {
-                let mut data = (needed_resolution.3).0.lock().unwrap();
-                let declaration = module.resolve(needed_resolution.1.clone(), needed_resolution.2);
-                // we want to replace the data only if we have some
-                if let Some(_) = declaration {
-                    *data = declaration;
-                    // mark this resolution as completed
-                    completed_resolutions.push(i);
-                }
+    pub fn add_module(&'compiler self, module: Module<'compiler>) {
+        let mut bank = self.declaration_bank.write().unwrap();
+        for declaration in module.declarations.iter() {
+            let declaration_id = DeclarationId::from(Some(&module), declaration);
+            if bank.contains_key(&declaration_id) {
+                panic!("ahh oh no the declaration already exists!!!");
             }
+            let dec_pointer = declaration as *const Declaration as usize;
+            let _ = bank.insert(declaration_id, dec_pointer);
         }
-        drop(resolutions);
+        drop(bank);
 
-        // remove completed resolutions from the list
-        let mut writer = self.resolutions_needed.write().unwrap();
-        let mut diff = 0;
-        for i in completed_resolutions {
-            writer.swap_remove(i - diff);
-            diff += 1;
-        }
-        drop(writer);
         self.modules.write().unwrap().push(module);
     }
 
-    pub fn resolve(
+    pub fn resolve_from_path(
         &self,
         path: ast::Path,
         name: String,
-        kind: Option<DeclarationKind>,
-    ) -> DeclarationContainer {
-        if path.0.len() == 0 {
-            if let Some(builtin) = builtin::find_builtin_declaration(name.clone(), kind) {
-                return builtin;
-            }
-        }
+    ) -> Option<&'compiler Declaration> {
+        let declaration_id = DeclarationId(format!("{}::{}", path.to_string(), name));
+        self.resolve(&declaration_id)
+    }
 
-        for module in self.modules.read().unwrap().iter() {
-            if module.full_path() == path {
-                let declaration = module.resolve(name.clone(), kind);
-                return DeclarationContainer(Arc::new(Mutex::new(declaration)));
-            }
-        }
-        if let Some(primitive) = PrimitiveType::from_name(name.clone()) {
-            return DeclarationContainer::from(Declaration::Type(
-                Box::new(Type::Primitive(primitive))
-            ));
-        }
-
-        let declaration = DeclarationContainer::empty();
-        let key = (path, name.clone(), kind, declaration.clone());
-
-        self.resolutions_needed.write().unwrap().push(key);
-        declaration
+    pub fn resolve(&self, declaration_id: &DeclarationId) -> Option<&'compiler Declaration> {
+        if let Some(declaration) = self.declaration_bank.read().unwrap().get(declaration_id) {
+            let dec_ptr = *declaration as *const Declaration<'compiler>;
+            Some(unsafe { &*dec_ptr })
+        } else { None }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct Module {
+pub struct Module<'a> {
     /// path doesn't contain the module's name
     pub path: ast::Path,
     pub name: String,
-    pub declarations: Vec<Arc<RwLock<Declaration>>>,
+    pub declarations: Vec<Declaration<'a>>,
 }
 
-impl Module {
+impl Module<'_> {
     pub fn full_path(&self) -> ast::Path {
         self.path.append(self.name.clone())
-    }
-
-    pub fn resolve(&self, name: String, kind: Option<DeclarationKind>) -> Option<Arc<RwLock<Declaration>>> {
-        if let Some(kind) = kind {
-            for declaration in self.declarations.iter() {
-                if declaration.read().unwrap().is_declaration_kind(kind) && declaration.read().unwrap().name() == name {
-                    return Some(declaration.clone());
-                }
-            }
-        } else {
-            for declaration in self.declarations.iter() {
-                if declaration.read().unwrap().name() == name {
-                    return Some(declaration.clone());
-                }
-            }
-        }
-        None
     }
 }
 
@@ -182,17 +106,17 @@ pub enum DeclarationKind {
 }
 
 #[derive(Clone, Debug)]
-pub enum Declaration {
-    Behaviour(Box<Behaviour>),
-    Function(Box<Function>),
-    Actor(Box<Actor>),
-    Struct(Box<Struct>),
-    Trait(Box<Trait>),
+pub enum Declaration<'dec> {
+    Behaviour(Box<Behaviour<'dec>>),
+    Function(Box<Function<'dec>>),
+    Actor(Box<Actor<'dec>>),
+    Struct(Box<Struct<'dec>>),
+    Trait(Box<Trait<'dec>>),
     Variable(Box<Variable>),
     Type(Box<Type>),
 }
 
-impl Declaration {
+impl<'a> Declaration<'a> {
     pub fn name(&self) -> String {
         match self {
             Declaration::Behaviour(b) => b.name.clone(),
@@ -266,32 +190,31 @@ impl Declaration {
 }
 
 #[derive(Clone, Debug)]
-pub struct Actor {
+pub struct Actor<'actor> {
     pub name: String,
     // Declaration::Variable
-    pub fields: Arc<RwLock<Vec<DeclarationContainer>>>,
+    pub fields: Vec<Declaration<'actor>>,
     // Declaration::Function
-    pub functions: Arc<RwLock<Vec<DeclarationContainer>>>,
+    pub functions: Vec<Declaration<'actor>>,
     // Declaration::Behaviour
-    pub behaviours: Arc<RwLock<Vec<DeclarationContainer>>>,
+    pub behaviours: Vec<Declaration<'actor>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Struct {
+pub struct Struct<'strct> {
     pub name: String,
     // Declaration::Variable
-    pub fields: Arc<RwLock<Vec<DeclarationContainer>>>,
+    pub fields: Vec<Declaration<'strct>>,
     // Declaration::Trait
-    pub traits: Arc<RwLock<Vec<DeclarationContainer>>>,
+    pub traits: Vec<Declaration<'strct>>,
     // Declaration::Function
-    pub functions: Arc<RwLock<Vec<DeclarationContainer>>>,
+    pub functions: Vec<Declaration<'strct>>,
 }
 
-impl Struct {
+impl<'strct> Struct<'strct> {
     pub fn get_type(&self) -> Box<types::Type> {
-        let guard = self.fields.read().unwrap();
-        let mut fields = Vec::with_capacity(guard.len());
-        for field in guard.iter() {
+        let mut fields = Vec::with_capacity(self.fields.len());
+        for field in self.fields.iter() {
             let name = field.name();
             let typ = field.get_type();
             fields.push((name, typ));
@@ -301,15 +224,15 @@ impl Struct {
 }
 
 #[derive(Clone, Debug)]
-pub struct Trait {
+pub struct Trait<'a> {
     pub name: String,
-    pub functions: Vec<Function>,
+    pub functions: Vec<Function<'a>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Variable {
     pub name: String,
-    pub typ: DeclarationContainer,
+    pub typ: DeclarationId,
 }
 
 #[derive(Clone, Debug)]
@@ -325,14 +248,14 @@ impl Display for Permission {
 }
 
 #[derive(Clone, Debug)]
-pub struct Function {
+pub struct Function<'a> {
     pub name: String,
-    pub arguments: Vec<(String, DeclarationContainer)>,
-    pub return_type: DeclarationContainer,
-    pub blocks: Vec<Arc<Mutex<Block>>>,
+    pub arguments: Vec<(String, DeclarationId)>,
+    pub return_type: DeclarationId,
+    pub blocks: Vec<Block<'a>>,
 }
 
-impl Function {
+impl<'a> Function<'a> {
     pub fn get_type(&self) -> Box<types::Type> {
         let mut arguments = Vec::<Box<types::Type>>::with_capacity(self.arguments.len());
 
@@ -346,64 +269,74 @@ impl Function {
 }
 
 #[derive(Clone, Debug)]
-pub struct Behaviour {
+pub struct Behaviour<'a> {
     pub name: String,
-    pub arguments: Vec<(String, DeclarationContainer)>,
-    pub blocks: Vec<Arc<Mutex<Block>>>,
+    pub arguments: Vec<(String, DeclarationId)>,
+    pub blocks: Vec<Block<'a>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Block {
-    pub instructions: Vec<Arc<Mutex<Instruction>>>,
+pub struct Block<'block> {
+    pub instructions: Vec<Instruction<'block>>,
 }
 
-impl Block {
-    pub fn new() -> Block {
+impl<'block> Block<'block> {
+    pub fn new() -> Block<'block> {
         Block {
             instructions: Vec::with_capacity(5),
         }
     }
 
-    pub fn add_instruction(&mut self, instruction: Arc<Mutex<Instruction>>) {
+    pub fn add_instruction<'compiler>(&'block mut self, instruction: Instruction<'block>, compiler: &'compiler Compiler<'compiler>) -> &'block Instruction<'block> where 'block: 'compiler {
         // don't add the instruction to this block if it already has an instruction
         // that doesn't return, like Return, Branch, Jump, etc
-        for instruction in self.instructions.iter() {
-            match *instruction.lock().unwrap().get_type() {
-                Type::Primitive(PrimitiveType::NoReturn) => return,
-                _ => {}
+        {
+            let mut found = false;
+            let mut found_ins = 0;
+            for (index, instruction) in self.instructions.iter().enumerate() {
+                match *instruction.get_type(compiler) {
+                    Type::Primitive(PrimitiveType::NoReturn) => {
+                        found_ins = index;
+                        found = true;
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+            if found {
+                return self.instructions.get(found_ins).expect("couldn't find instruction we just found?");
             }
         }
         self.instructions.push(instruction);
+        self.instructions.get(self.instructions.len() - 1).expect("couldn't find instruction we just added?")
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum Instruction {
+pub enum Instruction<'a> {
     Unreachable(String),
     BooleanLiteral(Box<BooleanLiteral>),
     IntegerLiteral(Box<IntegerLiteral>),
     DeclarationReference(Box<DeclarationReference>),
     GetParameter(Box<GetParameter>),
-    FunctionCall(Box<FunctionCall>),
-    Return(Box<Return>),
-    Jump(Box<Jump>),
-    Branch(Box<Branch>),
+    FunctionCall(Box<FunctionCall<'a>>),
+    Return(Box<Return<'a>>),
+    Jump(Box<Jump<'a>>),
+    Branch(Box<Branch<'a>>),
 }
 
-impl Instruction {
-    pub fn get_type(&self) -> Box<Type> {
+impl<'ins> Instruction<'ins> {
+    pub fn get_type<'compiler: 'ins>(&self, compiler: &'compiler Compiler<'compiler>) -> Box<Type> {
         return match self {
             Instruction::BooleanLiteral(_) => builtin::BOOL.get_type(),
             Instruction::IntegerLiteral(_) => builtin::COMPTIME_INT.get_type(),
             Instruction::DeclarationReference(s) => s.declaration.get_type(),
             Instruction::GetParameter(_) => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnimplementedParamGet".to_string() })),
             Instruction::FunctionCall(f) => {
-                let ins = f.function.lock().unwrap();
-                match *ins {
+                match *f.function {
                     Instruction::DeclarationReference(ref f) => {
-                        let guard = f.declaration.0.lock().unwrap();
-                        if let Some(ref dec) = *guard {
-                            match *dec.read().unwrap() {
+                        if let Some(ref dec) = compiler.resolve(&f.declaration) {
+                            match *dec {
                                 Declaration::Function(ref h) => h.return_type.get_type(),
                                 _ => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnPointerToFuncBody".to_string() }))
                             }
@@ -424,7 +357,7 @@ impl Instruction {
 
     /// Get type of an instruction in the context of a function or behaviour.
     /// Useful for getting the type of parameters.
-    pub fn get_type_with_context(&self, context: Either<&Box<Function>, &Box<Behaviour>>) -> Box<Type> {
+    pub fn get_type_with_context<'compiler: 'ins>(&'ins self, compiler: &'compiler Compiler<'compiler>, context: Either<&Box<Function>, &Box<Behaviour>>) -> Box<Type> {
         match self {
             Instruction::GetParameter(g) => {
                 let name = &g.name;
@@ -432,14 +365,22 @@ impl Instruction {
                     Either::Left(f) => {
                         for (arg_name, declaration) in &f.arguments {
                             if arg_name == name {
-                                return declaration.get_type();
+                                return if let Some(declaration) = compiler.resolve(declaration) {
+                                    declaration.get_type()
+                                } else {
+                                    declaration.get_type()
+                                };
                             }
                         }
                     }
                     Either::Right(b) => {
                         for (arg_name, declaration) in &b.arguments {
                             if arg_name == name {
-                                return declaration.get_type();
+                                return if let Some(declaration) = compiler.resolve(declaration) {
+                                    declaration.get_type()
+                                } else {
+                                    declaration.get_type()
+                                };
                             }
                         }
                     }
@@ -447,7 +388,7 @@ impl Instruction {
             }
             _ => {}
         }
-        self.get_type()
+        self.get_type(compiler)
     }
 }
 
@@ -462,23 +403,7 @@ pub struct IntegerLiteral(pub i64);
 #[derive(Clone, Debug)]
 pub struct DeclarationReference {
     pub name: (Option<ast::Path>, String),
-    pub declaration: DeclarationContainer,
-}
-
-impl DeclarationReference {
-    pub fn blank_with_path(path: ast::Path, name: String) -> Self {
-        Self {
-            name: (Some(path), name),
-            declaration: DeclarationContainer::empty(),
-        }
-    }
-
-    pub fn blank(name: String) -> Self {
-        Self {
-            name: (None, name),
-            declaration: DeclarationContainer::empty(),
-        }
-    }
+    pub declaration: DeclarationId,
 }
 
 #[derive(Clone, Debug)]
@@ -487,24 +412,24 @@ pub struct GetParameter {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionCall {
-    pub function: Arc<Mutex<Instruction>>,
-    pub arguments: Vec<Arc<Mutex<Instruction>>>,
+pub struct FunctionCall<'block> {
+    pub function: &'block Instruction<'block>,
+    pub arguments: Vec<&'block Instruction<'block>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Return {
-    pub instruction: Arc<Mutex<Instruction>>,
+pub struct Return<'block> {
+    pub instruction: &'block Instruction<'block>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Jump {
-    pub block: Arc<Mutex<Block>>,
+pub struct Jump<'block> {
+    pub block: &'block Block<'block>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Branch {
-    pub condition: Arc<Mutex<Instruction>>,
-    pub true_block: Arc<Mutex<Block>>,
-    pub false_block: Arc<Mutex<Block>>,
+pub struct Branch<'block> {
+    pub condition: &'block Instruction<'block>,
+    pub true_block: &'block Block<'block>,
+    pub false_block: &'block Block<'block>,
 }

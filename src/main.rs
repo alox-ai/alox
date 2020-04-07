@@ -287,16 +287,20 @@ actor A {
     let compiler = Arc::new(ir::Compiler::new());
 
     // simulate thread pool
-    let handle = thread::spawn({
-        let compiler_copy = compiler.clone();
-        move || {
-            //            thread::sleep(std::time::Duration::from_secs(1));
-            let now = Instant::now();
-            let module = compiler_copy.generate_ir(add_program);
-            println!("Add Module: {:?}", now.elapsed());
-            compiler_copy.add_module(module);
-        }
-    });
+    // let handle = thread::spawn({
+    //     move || {
+    //         let compiler_copy = compiler.clone();
+    //         //            thread::sleep(std::time::Duration::from_secs(1));
+    //         let now = Instant::now();
+    //         let module = compiler_copy.generate_ir(add_program);
+    //         println!("Add Module: {:?}", now.elapsed());
+    //         compiler_copy.add_module(module);
+    //     }
+    // });
+    let now = Instant::now();
+    let module = compiler.generate_ir(add_program);
+    println!("Add Module: {:?}", now.elapsed());
+    compiler.add_module(module);
 
     let mut now = Instant::now();
     compiler.add_module(compiler.generate_ir(main_program));
@@ -311,26 +315,22 @@ actor A {
     }
     match parsed_valid_test {
         Some(parsed_valid_test) => {
-            let module = compiler.generate_ir(parsed_valid_test);
+            let mut module = compiler.generate_ir(parsed_valid_test);
             let pass = DeadBranchRemovalPass {};
-            pass.pass(&module);
+            pass.pass(&mut module);
             compiler.add_module(module);
         }
         None => {}
     }
-    handle.join().unwrap();
+    // handle.join().unwrap();
 
     let mut printer = ir::debug::Printer::new(PrintMode::Stdout);
-    for module in compiler.modules.read().unwrap().iter() {
-        printer.print_module(module);
-        if module.name == "valid".to_string() {
-            let backend = CraneLiftBackend::new();
-            backend.convert_module(module);
-        }
-    }
-
-    let resolutions = compiler.resolutions_needed.read().unwrap();
-    for needed_resolution in resolutions.iter() {
-        println!("{:?} {:?} {:?}", needed_resolution.0, needed_resolution.1, needed_resolution.2);
+    let guard = compiler.modules.read().unwrap();
+    for module in guard.iter() {
+        printer.print_module(&compiler, &module);
+        // if module.name == "valid".to_string() {
+        //     let backend = CraneLiftBackend::new();
+        //     backend.convert_module(compiler.as_ref(), module);
+        // }
     }
 }

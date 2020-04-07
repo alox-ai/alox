@@ -1,9 +1,9 @@
 use crate::ir;
-use crate::ir::{Declaration, DeclarationContainer};
+use crate::ir::Declaration;
 use crate::ir::types::PrimitiveType;
 use crate::ir::types::Type;
 
-pub fn find_builtin_declaration(name: String, kind: Option<ir::DeclarationKind>) -> Option<ir::DeclarationContainer> {
+pub fn find_builtin_declaration(name: String, kind: Option<ir::DeclarationKind>) -> Option<Declaration<'static>> {
     if let Some(ir::DeclarationKind::Type) = kind {
         match name.as_str() {
             "Int8" => Some(INT8.clone()),
@@ -24,24 +24,24 @@ pub fn find_builtin_declaration(name: String, kind: Option<ir::DeclarationKind>)
     }
 }
 
-fn wrap_primitive(typ: PrimitiveType) -> DeclarationContainer {
-    DeclarationContainer::from(Declaration::Type(Box::new(Type::Primitive(typ))))
+fn wrap_primitive(typ: PrimitiveType) -> Declaration<'static> {
+    Declaration::Type(Box::new(Type::Primitive(typ)))
 }
 
 // constant declarations for builtin types
 lazy_static! {
-    pub static ref INT8: DeclarationContainer = wrap_primitive(PrimitiveType::Int(8));
-    pub static ref INT16: DeclarationContainer = wrap_primitive(PrimitiveType::Int(16));
-    pub static ref INT32: DeclarationContainer = wrap_primitive(PrimitiveType::Int(32));
-    pub static ref INT64: DeclarationContainer = wrap_primitive(PrimitiveType::Int(64));
-    pub static ref COMPTIME_INT: DeclarationContainer = wrap_primitive(PrimitiveType::Int(255));
+    pub static ref INT8: Declaration<'static> = wrap_primitive(PrimitiveType::Int(8));
+    pub static ref INT16: Declaration<'static> = wrap_primitive(PrimitiveType::Int(16));
+    pub static ref INT32: Declaration<'static> = wrap_primitive(PrimitiveType::Int(32));
+    pub static ref INT64: Declaration<'static> = wrap_primitive(PrimitiveType::Int(64));
+    pub static ref COMPTIME_INT: Declaration<'static> = wrap_primitive(PrimitiveType::Int(255));
 
-    pub static ref BOOL: DeclarationContainer = wrap_primitive(PrimitiveType::Bool);
+    pub static ref BOOL: Declaration<'static> = wrap_primitive(PrimitiveType::Bool);
 
-    pub static ref FLOAT32: DeclarationContainer = wrap_primitive(PrimitiveType::Float(32));
-    pub static ref FLOAT64: DeclarationContainer = wrap_primitive(PrimitiveType::Float(64));
-    pub static ref COMPTIME_FLOAT: DeclarationContainer = wrap_primitive(PrimitiveType::Float(255));
+    pub static ref FLOAT32: Declaration<'static> = wrap_primitive(PrimitiveType::Float(32));
+    pub static ref FLOAT64: Declaration<'static> = wrap_primitive(PrimitiveType::Float(64));
+    pub static ref COMPTIME_FLOAT: Declaration<'static> = wrap_primitive(PrimitiveType::Float(255));
 
-    pub static ref NORETURN: DeclarationContainer = wrap_primitive(PrimitiveType::NoReturn);
-    pub static ref VOID: DeclarationContainer = wrap_primitive(PrimitiveType::Void);
+    pub static ref NORETURN: Declaration<'static> = wrap_primitive(PrimitiveType::NoReturn);
+    pub static ref VOID: Declaration<'static> = wrap_primitive(PrimitiveType::Void);
 }

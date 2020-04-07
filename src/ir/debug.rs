@@ -1,10 +1,7 @@
-use core::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 use crate::ir::*;
 use crate::util::Either;
-use std::ops::Deref;
 
 pub enum PrintMode {
     Stdout,
@@ -51,30 +48,31 @@ impl Printer {
         }
     }
 
-    pub fn print_module(&mut self, module: &Module) {
+    pub fn print_module<'compiler>(&mut self, compiler: &'compiler Compiler<'compiler>, module: &Module<'compiler>) {
+        println!("test");
         self.print(format!(
             "; Module: {}::{}",
             module.path.to_string(),
             module.name
         ));
         for declaration in module.declarations.iter() {
-            self.print_declaration(declaration.read().unwrap().deref());
+            self.print_declaration(compiler, declaration);
         }
     }
 
-    pub fn print_declaration(&mut self, dec: &Declaration) {
+    pub fn print_declaration<'compiler>(&mut self, compiler: &'compiler Compiler<'compiler>, dec: &Declaration<'compiler>) {
         match dec {
             Declaration::Actor(ref actor) => {
-                self.print_actor(actor);
+                self.print_actor(compiler, actor);
             }
             Declaration::Struct(ref struc) => {
-                self.print_struct(struc);
+                self.print_struct(compiler, struc);
             }
             Declaration::Behaviour(ref behaviour) => {
-                self.print_behaviour(behaviour);
+                self.print_behaviour(compiler, behaviour);
             }
             Declaration::Function(ref function) => {
-                self.print_function(function);
+                self.print_function(compiler, function);
             }
             Declaration::Variable(ref variable) => {
                 self.print_variable(variable);
@@ -83,59 +81,38 @@ impl Printer {
         }
     }
 
-    pub fn print_struct(&mut self, struc: &Box<Struct>) {
+    pub fn print_struct<'compiler>(&mut self, compiler: &'compiler Compiler<'compiler>, struc: &Box<Struct<'compiler>>) {
         self.print(format!("struct {}:", struc.name));
         self.push();
 
-        let traits = struc.traits.read().unwrap();
-        for trai in traits.iter() {
+        for trai in struc.traits.iter() {
             self.print(format!("+trait {}", trai.name()))
         }
 
-        let fields = struc.fields.read().unwrap();
-        for field in fields.iter() {
-            let field_guard = field.0.lock().unwrap();
-            if let Some(ref field) = *field_guard {
-                self.print_declaration(&*field.read().unwrap());
-            }
+        for field in struc.fields.iter() {
+            self.print_declaration(compiler, field);
         }
 
-        let functions = struc.functions.read().unwrap();
-        for function in functions.iter() {
-            let function_guard = function.0.lock().unwrap();
-            if let Some(ref function) = *function_guard {
-                self.print_declaration(&*function.read().unwrap());
-            }
+        for function in struc.functions.iter() {
+            self.print_declaration(compiler, function);
         }
         self.pop();
     }
 
-    pub fn print_actor(&mut self, actor: &Box<Actor>) {
+    pub fn print_actor<'compiler>(&mut self, compiler: &'compiler Compiler<'compiler>, actor: &Box<Actor<'compiler>>) {
         self.print(format!("actor {}:", actor.name));
         self.push();
 
-        let fields = actor.fields.read().unwrap();
-        for field in fields.iter() {
-            let field_guard = field.0.lock().unwrap();
-            if let Some(ref field) = *field_guard {
-                self.print_declaration(&*field.read().unwrap());
-            }
+        for field in actor.fields.iter() {
+            self.print_declaration(compiler, field);
         }
 
-        let functions = actor.functions.read().unwrap();
-        for function in functions.iter() {
-            let function_guard = function.0.lock().unwrap();
-            if let Some(ref function) = *function_guard {
-                self.print_declaration(&*function.read().unwrap());
-            }
+        for function in actor.functions.iter() {
+            self.print_declaration(compiler, function);
         }
 
-        let behaviours = actor.behaviours.read().unwrap();
-        for behaviour in behaviours.iter() {
-            let behaviour_guard = behaviour.0.lock().unwrap();
-            if let Some(ref behaviour) = *behaviour_guard {
-                self.print_declaration(&*behaviour.read().unwrap());
-            }
+        for behaviour in actor.behaviours.iter() {
+            self.print_declaration(compiler, behaviour);
         }
         self.pop();
     }
@@ -144,7 +121,7 @@ impl Printer {
         self.print(format!("let {}: {}", variable.name, variable.typ.get_type().name().clone()));
     }
 
-    pub fn print_behaviour(&mut self, behaviour: &Box<Behaviour>) {
+    pub fn print_behaviour<'compiler>(&mut self, compiler: &'compiler Compiler<'compiler>, behaviour: &Box<Behaviour<'compiler>>) {
         let mut joined_args = "".to_string();
         for (id, (arg, dec)) in (&behaviour.arguments).iter().enumerate() {
             joined_args.push_str(&format!("%{}: {}", arg, dec.name()));
@@ -160,20 +137,20 @@ impl Printer {
         self.push();
 
         if behaviour.blocks.len() > 0 {
-            let mut instruction_ids: HashMap<*const Mutex<Instruction>, usize> = HashMap::new();
-            let mut block_ids: HashMap<*const Mutex<Block>, usize> = HashMap::new();
+            let mut instruction_ids: HashMap<*const Instruction, usize> = HashMap::new();
+            let mut block_ids: HashMap<*const Block, usize> = HashMap::new();
             // put block ids in map
             for (id, block) in behaviour.blocks.iter().enumerate() {
-                block_ids.insert(block.as_ref() as *const Mutex<Block>, id);
+                block_ids.insert(block as *const Block, id);
             }
             for (id, block) in behaviour.blocks.iter().enumerate() {
-                self.print_block(&mut instruction_ids, &block_ids, id, block, Either::Right(behaviour));
+                self.print_block(compiler, &mut instruction_ids, &block_ids, id, block, Either::Right(behaviour));
             }
         }
         self.pop();
     }
 
-    pub fn print_function(&mut self, function: &Box<Function>) {
+    pub fn print_function<'compiler>(&mut self, compiler: &'compiler Compiler<'compiler>, function: &Box<Function<'compiler>>) {
         let mut joined_args = "".to_string();
         for (id, (arg, dec)) in (&function.arguments).iter().enumerate() {
             joined_args.push_str(&format!("%{}: {}", arg, dec.name()));
@@ -190,50 +167,50 @@ impl Printer {
         self.push();
 
         if function.blocks.len() > 0 {
-            let mut instruction_ids: HashMap<*const Mutex<Instruction>, usize> = HashMap::new();
-            let mut block_ids: HashMap<*const Mutex<Block>, usize> = HashMap::new();
+            let mut instruction_ids: HashMap<*const Instruction, usize> = HashMap::new();
+            let mut block_ids: HashMap<*const Block, usize> = HashMap::new();
             // put block ids in map
             for (id, block) in function.blocks.iter().enumerate() {
-                block_ids.insert(block.as_ref() as *const Mutex<Block>, id);
+                block_ids.insert(block as *const Block, id);
             }
 
             for (id, block) in function.blocks.iter().enumerate() {
-                self.print_block(&mut instruction_ids, &block_ids, id, block, Either::Left(function));
+                self.print_block(compiler, &mut instruction_ids, &block_ids, id, block, Either::Left(function));
             }
         }
         self.pop();
     }
 
-    pub fn print_block(
+    pub fn print_block<'compiler>(
         &mut self,
-        instruction_ids: &mut HashMap<*const Mutex<Instruction>, usize>,
-        block_ids: &HashMap<*const Mutex<Block>, usize>,
+        compiler: &'compiler Compiler<'compiler>,
+        instruction_ids: &mut HashMap<*const Instruction<'compiler>, usize>,
+        block_ids: &HashMap<*const Block, usize>,
         id: usize,
-        block: &Arc<Mutex<Block>>,
+        block: &Block<'compiler>,
         function: Either<&Box<Function>, &Box<Behaviour>>,
     ) {
-        let block = block.lock().unwrap();
         self.print(format!("block#{}:", id));
 
         self.push();
         for instruction in block.instructions.iter() {
             let id = instruction_ids.len();
-            instruction_ids.insert(instruction.as_ref() as *const Mutex<Instruction>, id);
-            self.print_instruction(&instruction_ids, block_ids, id, instruction, function);
+            instruction_ids.insert(instruction as *const Instruction, id);
+            self.print_instruction(compiler, &instruction_ids, block_ids, id, instruction, function);
         }
         self.pop();
     }
 
-    pub fn print_instruction(
+    pub fn print_instruction<'compiler>(
         &mut self,
-        instruction_ids: &HashMap<*const Mutex<Instruction>, usize>,
-        block_ids: &HashMap<*const Mutex<Block>, usize>,
+        compiler: &'compiler Compiler<'compiler>,
+        instruction_ids: &HashMap<*const Instruction<'compiler>, usize>,
+        block_ids: &HashMap<*const Block, usize>,
         id: usize,
-        instruction: &Arc<Mutex<Instruction>>,
+        instruction: &Instruction<'compiler>,
         function: Either<&Box<Function>, &Box<Behaviour>>,
     ) {
-        let instruction = instruction.lock().unwrap();
-        let ins_type = instruction.get_type_with_context(function).name();
+        let ins_type = instruction.get_type_with_context(compiler, function).name();
         match *instruction {
             Instruction::DeclarationReference(ref d) => {
                 let (path, name) = &d.name;
@@ -241,7 +218,7 @@ impl Printer {
                     Some(path) => path.to_string(),
                     None => "".to_string(),
                 };
-                let filled = match *(d.declaration.0.lock().unwrap()) {
+                let filled = match compiler.resolve(&d.declaration) {
                     None => "*",
                     Some(_) => "",
                 };
@@ -251,7 +228,7 @@ impl Printer {
             Instruction::BooleanLiteral(ref b) => self.print(format!("%{} : {} = {}", id, ins_type, b.as_ref().0)),
             Instruction::IntegerLiteral(ref i) => self.print(format!("%{} : {} = {}", id, ins_type, i.as_ref().0)),
             Instruction::FunctionCall(ref call) => {
-                let function = call.function.as_ref() as *const Mutex<Instruction>;
+                let function = call.function as *const Instruction;
                 let function_id = if let Some(id) = instruction_ids.get(&function) {
                     *id
                 } else {
@@ -260,7 +237,7 @@ impl Printer {
 
                 let mut arg_ids = Vec::with_capacity(call.arguments.len());
                 for arg in call.arguments.iter() {
-                    let p = arg.as_ref() as *const Mutex<Instruction>;
+                    let p = (*arg) as *const Instruction;
                     let arg_id = if let Some(id) = instruction_ids.get(&p) { *id } else { 88888 };
                     arg_ids.push(arg_id);
                 }
@@ -270,7 +247,7 @@ impl Printer {
                 self.print(format!("%{} : {} = %{}({})", id, ins_type, function_id, args_connected))
             }
             Instruction::Return(ref ret) => {
-                let value = ret.instruction.as_ref() as *const Mutex<Instruction>;
+                let value = ret.instruction as *const Instruction;
                 let value_id = if let Some(id) = instruction_ids.get(&value) { *id } else { 77777 };
 
                 self.print(format!("ret %{}", value_id))
@@ -279,11 +256,11 @@ impl Printer {
                 self.print(format!("%{} : {} = param %{}", id, ins_type, param.name))
             }
             Instruction::Branch(ref branch) => {
-                let cond = branch.condition.as_ref() as *const Mutex<Instruction>;
+                let cond = branch.condition as *const Instruction;
                 let cond_id = if let Some(id) = instruction_ids.get(&cond) { *id } else { 66666 };
 
-                let true_block = branch.true_block.as_ref() as *const Mutex<Block>;
-                let false_block = branch.false_block.as_ref() as *const Mutex<Block>;
+                let true_block = branch.true_block as *const Block;
+                let false_block = branch.false_block as *const Block;
 
                 let true_block_id = if let Some(id) = block_ids.get(&true_block) { *id } else { 66665 };
                 let false_block_id = if let Some(id) = block_ids.get(&false_block) { *id } else { 66664 };
@@ -291,7 +268,7 @@ impl Printer {
                 self.print(format!("branch %{} block#{} block#{}", cond_id, true_block_id, false_block_id))
             }
             Instruction::Jump(ref jump) => {
-                let block = jump.block.as_ref() as *const Mutex<Block>;
+                let block = jump.block as *const Block;
 
                 let block_id = if let Some(id) = block_ids.get(&block) { *id } else { 66663 };
                 self.print(format!("jump block#{}", block_id))
