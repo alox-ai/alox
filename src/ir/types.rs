@@ -41,6 +41,10 @@ impl Type {
 impl Debug for Type {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}", self.name())?;
+        match self {
+            Type::Unresolved(unresolved) => { write!(f, "*"); }
+            _ => {}
+        }
         Ok(())
     }
 }
@@ -59,7 +63,7 @@ impl UnresolvedType {
 #[derive(Clone, Debug)]
 pub struct StructType {
     pub name: String,
-    pub fields: Vec<(String, Box<Type>)>
+    pub fields: Vec<(String, Box<Type>)>,
 }
 
 #[derive(Clone, Debug)]

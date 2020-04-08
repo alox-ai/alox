@@ -12,16 +12,16 @@ pub fn check_ir(test_name: &str, code: &str, expected_ir: &str) {
     let mut parsed_program = parser::parse(Path::of("test"), test_name.to_string(), code.to_string());
     let compiler = Compiler::new();
 
-    let module = compiler.generate_ir(parsed_program.unwrap());
+    let mut module = compiler.generate_ir(parsed_program.unwrap());
     let pass = DeadBranchRemovalPass {};
-    pass.pass(&module);
+    pass.pass(&mut module);
     compiler.add_module(module);
 
     // print the module and store it in the buffer
     let mut actual_ir = String::new();
     let backend = CraneLiftBackend::new();
     for module in compiler.modules.read().unwrap().iter() {
-        actual_ir = backend.convert_module(module);
+        actual_ir = backend.convert_module(&compiler, module);
     }
 
     // remove trailing new lines
