@@ -1,4 +1,5 @@
-use crate::ir::{Declaration, Function, Module, Instruction};
+use crate::ir::{Declaration, Function, Module, Instruction, Block};
+use crate::util::Either;
 
 pub trait Pass {
     fn pass(&self, module: &mut Module) {
@@ -10,9 +11,11 @@ pub trait Pass {
     fn pass_declaration(&self, dec: &mut Declaration) {
         match *dec {
             Declaration::Function(ref mut function) => {
-                self.pass_function(function);
+                self.pass_blocks(&mut function.blocks);
             }
-            Declaration::Behaviour(_) => {}
+            Declaration::Behaviour(ref mut behaviour) => {
+                self.pass_blocks(&mut behaviour.blocks);
+            }
             Declaration::Actor(ref mut actor) => {
                 for function in actor.functions.iter_mut() {
                     self.pass_declaration(function);
@@ -32,19 +35,19 @@ pub trait Pass {
             Declaration::Type(_) => {}
         }
     }
-    fn pass_function(&self, function: &mut Box<Function>);
+    fn pass_blocks(&self, blocks: &mut Vec<Block>);
 }
 
 pub struct DeadBranchRemovalPass {}
 
 impl Pass for DeadBranchRemovalPass {
     // TODO: account for dead blocks that refer to each other
-    fn pass_function(&self, function: &mut Box<Function>) {
+    fn pass_blocks(&self, blocks: &mut Vec<Block>) {
         let mut dead_blocks = vec![];
         // go over every block
-        'blocks: for (block_id, _) in function.blocks.iter().enumerate() {
+        'blocks: for (block_id, _) in blocks.iter().enumerate() {
             // compare every block to every other block
-            'other_blocks: for (other_block_id, other_block) in function.blocks.iter().enumerate() {
+            'other_blocks: for (other_block_id, other_block) in blocks.iter().enumerate() {
                 // make sure we're not comparing the same block
                 if other_block_id == block_id { continue 'other_blocks; }
 
@@ -77,7 +80,7 @@ impl Pass for DeadBranchRemovalPass {
         dead_blocks.reverse();
         for i in dead_blocks {
             if i != 0 { // we don't want to remove the first block
-                function.blocks.remove(i);
+                blocks.remove(i);
             }
         }
     }

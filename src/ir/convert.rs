@@ -195,9 +195,7 @@ impl ir::Compiler {
 
         let mut blocks = Vec::with_capacity(block_builder.blocks.len());
         for block in block_builder.blocks {
-            // if block.instructions.len() > 0 {
-                blocks.push(block.clone());
-            // }
+            blocks.push(block.clone());
         }
 
         let mut arguments = Vec::with_capacity(f.arguments.len());
@@ -376,29 +374,26 @@ impl ir::Compiler {
         block: &mut ir::Block,
         expression: &ast::Expression,
     ) -> ir::InstructionId {
-        let block_copy: &mut ir::Block = unsafe { &mut *(block as *mut ir::Block) };
         let ins = match expression {
             ast::Expression::BooleanLiteral(b) =>
                 ir::Instruction::BooleanLiteral(Box::new(ir::BooleanLiteral(b.as_ref().0))),
             ast::Expression::IntegerLiteral(i) =>
                 ir::Instruction::IntegerLiteral(Box::new(ir::IntegerLiteral(i.as_ref().0))),
             ast::Expression::FunctionCall(call) => {
-                let block_copy2: &mut ir::Block = unsafe { &mut *(block_copy as *mut ir::Block) };
                 let function = self.generate_ir_expression(
                     current_path,
                     completed_declarations,
                     lvt,
-                    block_copy,
+                    block,
                     &call.function,
                 );
                 let mut arguments = Vec::with_capacity(call.arguments.len());
                 for argument in call.arguments.iter() {
-                    let block_copy3: &mut ir::Block = unsafe { &mut *(block_copy2 as *mut ir::Block) };
                     let argument_ins = self.generate_ir_expression(
                         current_path,
                         completed_declarations,
                         lvt,
-                        block_copy3,
+                        block,
                         argument,
                     );
                     arguments.push(argument_ins);
@@ -488,13 +483,11 @@ impl BlockBuilder {
     }
 
     pub fn current_block(&mut self) -> &mut ir::Block {
-        let result: &mut ir::Block = self.blocks.get_mut(self.current_block).unwrap();
-        // let mut x = unsafe { &mut *(result as *mut ir::Block) };
-        result
+        self.blocks.get_mut(self.current_block).unwrap()
     }
 
     pub fn create_block(&mut self) -> &mut ir::Block {
-        // don't create a new block if the currnet block has 0 instructions
+        // don't create a new block if the current block has 0 instructions
         if self.current_block().instructions.len() > 0 {
             self.current_block = self.blocks.len();
             self.blocks.push(ir::Block::new(self.current_block));
