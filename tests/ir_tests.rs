@@ -11,15 +11,15 @@ pub fn check_ir(test_name: &str, code: &str, expected_ir: &str) {
     let mut parsed_program = parser::parse(Path::of("test"), test_name.to_string(), code.to_string());
     let compiler = Compiler::new();
 
-    let module = compiler.generate_ir(parsed_program.unwrap());
+    let mut module = compiler.generate_ir(parsed_program.unwrap());
     let pass = DeadBranchRemovalPass {};
-    pass.pass(&module);
+    pass.pass(&mut module);
     compiler.add_module(module);
 
     // print the module and store it in the buffer
     let mut printer = Printer::new(PrintMode::Buffer);
     for module in compiler.modules.read().unwrap().iter() {
-        printer.print_module(module);
+        printer.print_module(&compiler, module);
     }
 
     // remove trailing new lines
@@ -199,7 +199,7 @@ fun test(a: Int32) {
 }", "\
 ; Module: test::void_function
 fun @test(%a: Int32) -> Void:
-");
+  block#0:");
 }
 
 #[test]
@@ -217,8 +217,8 @@ fun @test(%a: Int32) -> Int32:
     %0 : Bool = true
     jump block#1
   block#1:
-    %2 : Int32 = param %a
-    ret %2");
+    %0 : Int32 = param %a
+    ret %0");
 }
 
 #[test]
@@ -237,14 +237,14 @@ fun @test(%a: Bool) -> Int32:
     %0 : Bool = param %a
     branch %0 block#1 block#2
   block#1:
-    %2 : ComptimeInt = 1
-    ret %2
+    %0 : ComptimeInt = 1
+    ret %0
   block#2:
-    %4 : Bool = true
+    %0 : Bool = true
     jump block#3
   block#3:
-    %6 : ComptimeInt = 0
-    ret %6");
+    %0 : ComptimeInt = 0
+    ret %0");
 }
 
 #[test]
@@ -265,17 +265,17 @@ fun @test(%a: Bool) -> Int32:
     %0 : Bool = param %a
     branch %0 block#1 block#2
   block#1:
-    %2 : ComptimeInt = 1
-    ret %2
+    %0 : ComptimeInt = 1
+    ret %0
   block#2:
-    %4 : Bool = false
-    jump block#3
-  block#3:
-    %6 : Bool = true
+    %0 : Bool = false
     jump block#4
+  block#3:
+    %0 : Bool = true
+    jump block#5
   block#4:
-    %8 : ComptimeInt = 3
-    ret %8");
+    %0 : ComptimeInt = 3
+    ret %0");
 }
 
 #[test]
@@ -302,38 +302,38 @@ fun @foo(%a: Bool, %b: Bool, %c: Bool, %d: Bool, %e: Bool) -> Int32:
     %0 : Bool = param %a
     branch %0 block#1 block#2
   block#1:
-    %2 : ComptimeInt = 1
-    ret %2
+    %0 : ComptimeInt = 1
+    ret %0
   block#2:
-    %4 : Bool = param %b
-    branch %4 block#3 block#4
+    %0 : Bool = param %b
+    branch %0 block#3 block#4
   block#3:
-    %6 : ComptimeInt = 2
-    ret %6
+    %0 : ComptimeInt = 2
+    ret %0
   block#4:
-    %8 : Bool = param %c
-    branch %8 block#5 block#6
+    %0 : Bool = param %c
+    branch %0 block#5 block#6
   block#5:
-    %10 : ComptimeInt = 3
-    ret %10
+    %0 : ComptimeInt = 3
+    ret %0
   block#6:
-    %12 : Bool = param %d
-    branch %12 block#7 block#8
+    %0 : Bool = param %d
+    branch %0 block#7 block#8
   block#7:
-    %14 : ComptimeInt = 4
-    ret %14
+    %0 : ComptimeInt = 4
+    ret %0
   block#8:
-    %16 : Bool = param %e
-    branch %16 block#9 block#10
+    %0 : Bool = param %e
+    branch %0 block#9 block#10
   block#9:
-    %18 : ComptimeInt = 5
-    ret %18
+    %0 : ComptimeInt = 5
+    ret %0
   block#10:
-    %20 : Bool = true
+    %0 : Bool = true
     jump block#11
   block#11:
-    %22 : ComptimeInt = 6
-    ret %22");
+    %0 : ComptimeInt = 6
+    ret %0");
 }
 
 #[test]
@@ -356,21 +356,21 @@ fun @foo(%a: Bool, %b: Bool) -> Int32:
     %0 : Bool = param %a
     branch %0 block#1 block#5
   block#1:
-    %2 : Bool = param %b
-    branch %2 block#2 block#3
+    %0 : Bool = param %b
+    branch %0 block#2 block#3
   block#2:
-    %4 : ComptimeInt = 1
-    ret %4
+    %0 : ComptimeInt = 1
+    ret %0
   block#3:
-    %6 : Bool = true
+    %0 : Bool = true
     jump block#4
   block#4:
-    %8 : ComptimeInt = 2
-    ret %8
+    %0 : ComptimeInt = 2
+    ret %0
   block#5:
-    %10 : Bool = true
+    %0 : Bool = true
     jump block#6
   block#6:
-    %12 : ComptimeInt = 3
-    ret %12");
+    %0 : ComptimeInt = 3
+    ret %0");
 }

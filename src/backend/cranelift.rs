@@ -117,7 +117,7 @@ impl CraneLiftBackend {
         let mut sig = Signature::new(CallConv::SystemV);
         // convert return type
         if let Either::Left(function) = function {
-            if let Some(typ) = self.convert_type(function.return_type.get_type()) {
+            if let Some(typ) = self.convert_type(function.return_type.get_type(compiler)) {
                 sig.returns.push(AbiParam::new(typ));
             }
         }
@@ -129,7 +129,7 @@ impl CraneLiftBackend {
         };
 
         for (_name, arg) in args {
-            if let Some(typ) = self.convert_type(arg.get_type()) {
+            if let Some(typ) = self.convert_type(arg.get_type(compiler)) {
                 sig.params.push(AbiParam::new(typ));
             }
         }

@@ -195,9 +195,9 @@ impl ir::Compiler {
 
         let mut blocks = Vec::with_capacity(block_builder.blocks.len());
         for block in block_builder.blocks {
-            if block.instructions.len() > 0 {
+            // if block.instructions.len() > 0 {
                 blocks.push(block.clone());
-            }
+            // }
         }
 
         let mut arguments = Vec::with_capacity(f.arguments.len());
@@ -494,8 +494,11 @@ impl BlockBuilder {
     }
 
     pub fn create_block(&mut self) -> &mut ir::Block {
-        self.current_block = self.blocks.len();
-        self.blocks.push(ir::Block::new(self.current_block));
+        // don't create a new block if the currnet block has 0 instructions
+        if self.current_block().instructions.len() > 0 {
+            self.current_block = self.blocks.len();
+            self.blocks.push(ir::Block::new(self.current_block));
+        }
         self.current_block()
     }
 

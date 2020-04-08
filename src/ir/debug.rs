@@ -47,7 +47,6 @@ impl Printer {
     }
 
     pub fn print_module(&mut self, compiler: &Compiler, module: &Module) {
-        println!("test");
         self.print(format!(
             "; Module: {}::{}",
             module.path.to_string(),
@@ -73,7 +72,7 @@ impl Printer {
                 self.print_function(compiler, function);
             }
             Declaration::Variable(ref variable) => {
-                self.print_variable(variable);
+                self.print_variable(compiler, variable);
             }
             _ => {}
         }
@@ -115,8 +114,8 @@ impl Printer {
         self.pop();
     }
 
-    pub fn print_variable(&mut self, variable: &Box<Variable>) {
-        self.print(format!("let {}: {}", variable.name, variable.typ.get_type().name().clone()));
+    pub fn print_variable(&mut self, compiler: &Compiler, variable: &Box<Variable>) {
+        self.print(format!("let {}: {}", variable.name, variable.typ.get_type(compiler).name().clone()));
     }
 
     pub fn print_behaviour(&mut self, compiler: &Compiler, behaviour: &Box<Behaviour>) {

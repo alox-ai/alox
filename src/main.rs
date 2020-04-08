@@ -287,20 +287,20 @@ actor A {
     let compiler = Arc::new(ir::Compiler::new());
 
     // simulate thread pool
-    // let handle = thread::spawn({
-    //     move || {
-    //         let compiler_copy = compiler.clone();
-    //         //            thread::sleep(std::time::Duration::from_secs(1));
-    //         let now = Instant::now();
-    //         let module = compiler_copy.generate_ir(add_program);
-    //         println!("Add Module: {:?}", now.elapsed());
-    //         compiler_copy.add_module(module);
-    //     }
-    // });
-    let now = Instant::now();
-    let module = compiler.generate_ir(add_program);
-    println!("Add Module: {:?}", now.elapsed());
-    compiler.add_module(module);
+    let handle = thread::spawn({
+        let compiler_copy = compiler.clone();
+        move || {
+            // thread::sleep(std::time::Duration::from_secs(1));
+            let now = Instant::now();
+            let module = compiler_copy.generate_ir(add_program);
+            println!("Add Module: {:?}", now.elapsed());
+            compiler_copy.add_module(module);
+        }
+    });
+    // let now = Instant::now();
+    // let module = compiler.generate_ir(add_program);
+    // println!("Add Module: {:?}", now.elapsed());
+    // compiler.add_module(module);
 
     let mut now = Instant::now();
     compiler.add_module(compiler.generate_ir(main_program));
@@ -322,7 +322,7 @@ actor A {
         }
         None => {}
     }
-    // handle.join().unwrap();
+    handle.join().unwrap();
 
     let mut printer = ir::debug::Printer::new(PrintMode::Stdout);
     let guard = compiler.modules.read().unwrap();

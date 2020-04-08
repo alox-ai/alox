@@ -26,9 +26,12 @@ impl DeclarationId {
         }
     }
 
-    pub fn get_type(&self) -> Box<types::Type> {
-        // TODO
-        Box::new(types::Type::Unresolved(types::UnresolvedType { name: self.0.clone() }))
+    pub fn get_type(&self, compiler: &Compiler) -> Box<types::Type> {
+        match compiler.resolve(self) {
+            Some(dec) =>
+                dec.get_type(compiler),
+            None => Box::new(types::Type::Unresolved(types::UnresolvedType::of(&format!("u*{}", self.0))))
+        }
     }
 
     pub fn name(&self) -> String {
@@ -74,6 +77,13 @@ impl Compiler {
     }
 
     pub fn resolve(&self, declaration_id: &DeclarationId) -> Option<&Declaration> {
+        let mut declaration_name = declaration_id.0.clone();
+        if declaration_name.starts_with("::") {
+            match builtin::find_builtin_declaration(declaration_name.split_off(2)) {
+                Some(dec) => return Some(&dec),
+                _ => {}
+            }
+        }
         if let Some(declaration) = self.declaration_bank.read().unwrap().get(declaration_id) {
             let dec_ptr = *declaration as *const Declaration;
             Some(unsafe { &*dec_ptr })
@@ -159,10 +169,10 @@ impl Declaration {
         false
     }
 
-    pub fn get_type(&self) -> Box<Type> {
+    pub fn get_type(&self, compiler: &Compiler) -> Box<Type> {
         match self {
-            Declaration::Function(f) => f.get_type(),
-            Declaration::Struct(s) => s.get_type(),
+            Declaration::Function(f) => f.get_type(compiler),
+            Declaration::Struct(s) => s.get_type(compiler),
             Declaration::Type(t) => t.clone(),
             _ => Box::new(types::Type::Unresolved(types::UnresolvedType::of("UnresolvedDeclaration"))),
         }
@@ -213,11 +223,11 @@ pub struct Struct {
 }
 
 impl Struct {
-    pub fn get_type(&self) -> Box<types::Type> {
+    pub fn get_type(&self, compiler: &Compiler) -> Box<types::Type> {
         let mut fields = Vec::with_capacity(self.fields.len());
         for field in self.fields.iter() {
             let name = field.name();
-            let typ = field.get_type();
+            let typ = field.get_type(compiler);
             fields.push((name, typ));
         }
         Box::new(types::Type::Struct(types::StructType { name: self.name.clone(), fields }))
@@ -257,14 +267,14 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn get_type(&self) -> Box<types::Type> {
+    pub fn get_type(&self, compiler: &Compiler) -> Box<types::Type> {
         let mut arguments = Vec::<Box<types::Type>>::with_capacity(self.arguments.len());
 
         for arg in &self.arguments {
-            arguments.push(arg.1.get_type());
+            arguments.push(arg.1.get_type(compiler));
         }
 
-        let result = self.return_type.get_type();
+        let result = self.return_type.get_type(compiler);
         Box::new(types::Type::Function(types::FunctionType { arguments, result }))
     }
 }
@@ -335,9 +345,9 @@ pub enum Instruction {
 impl Instruction {
     pub fn get_type(&self, compiler: &Compiler, block: &Block) -> Box<Type> {
         return match self {
-            Instruction::BooleanLiteral(_) => builtin::BOOL.get_type(),
-            Instruction::IntegerLiteral(_) => builtin::COMPTIME_INT.get_type(),
-            Instruction::DeclarationReference(s) => s.declaration.get_type(),
+            Instruction::BooleanLiteral(_) => builtin::BOOL.get_type(compiler),
+            Instruction::IntegerLiteral(_) => builtin::COMPTIME_INT.get_type(compiler),
+            Instruction::DeclarationReference(s) => s.declaration.get_type(compiler),
             Instruction::GetParameter(_) => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnimplementedParamGet".to_string() })),
             Instruction::FunctionCall(f) => {
                 let func_ins_id = f.function;
@@ -346,7 +356,7 @@ impl Instruction {
                     Instruction::DeclarationReference(ref f) => {
                         if let Some(ref dec) = compiler.resolve(&f.declaration) {
                             match *dec {
-                                Declaration::Function(ref h) => h.return_type.get_type(),
+                                Declaration::Function(ref h) => h.return_type.get_type(compiler),
                                 _ => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnPointerToFuncBody".to_string() }))
                             }
                         } else {
@@ -375,9 +385,9 @@ impl Instruction {
                         for (arg_name, declaration) in &f.arguments {
                             if arg_name == name {
                                 return if let Some(declaration) = compiler.resolve(declaration) {
-                                    declaration.get_type()
+                                    declaration.get_type(compiler)
                                 } else {
-                                    declaration.get_type()
+                                    declaration.get_type(compiler)
                                 };
                             }
                         }
@@ -386,9 +396,9 @@ impl Instruction {
                         for (arg_name, declaration) in &b.arguments {
                             if arg_name == name {
                                 return if let Some(declaration) = compiler.resolve(declaration) {
-                                    declaration.get_type()
+                                    declaration.get_type(compiler)
                                 } else {
-                                    declaration.get_type()
+                                    declaration.get_type(compiler)
                                 };
                             }
                         }

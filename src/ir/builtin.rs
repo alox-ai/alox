@@ -3,24 +3,20 @@ use crate::ir::Declaration;
 use crate::ir::types::PrimitiveType;
 use crate::ir::types::Type;
 
-pub fn find_builtin_declaration(name: String, kind: Option<ir::DeclarationKind>) -> Option<Declaration> {
-    if let Some(ir::DeclarationKind::Type) = kind {
-        match name.as_str() {
-            "Int8" => Some(INT8.clone()),
-            "Int16" => Some(INT16.clone()),
-            "Int32" => Some(INT32.clone()),
-            "Int64" => Some(INT64.clone()),
-            "ComptimeInt" => Some(COMPTIME_INT.clone()),
-            "Bool" => Some(BOOL.clone()),
-            "Float32" => Some(FLOAT32.clone()),
-            "Float64" => Some(FLOAT64.clone()),
-            "ComptimeFloat" => Some(COMPTIME_FLOAT.clone()),
-            "NoReturn" => Some(NORETURN.clone()),
-            "Void" => Some(VOID.clone()),
-            _ => None
-        }
-    } else {
-        None
+pub fn find_builtin_declaration(name: String) -> Option<&'static Declaration> {
+    match name.as_str() {
+        "Int8" => Some(&*INT8),
+        "Int16" => Some(&*INT16),
+        "Int32" => Some(&*INT32),
+        "Int64" => Some(&*INT64),
+        "ComptimeInt" => Some(&*COMPTIME_INT),
+        "Bool" => Some(&*BOOL),
+        "Float32" => Some(&*FLOAT32),
+        "Float64" => Some(&*FLOAT64),
+        "ComptimeFloat" => Some(&*COMPTIME_FLOAT),
+        "NoReturn" => Some(&*NORETURN),
+        "Void" => Some(&*VOID),
+        _ => None
     }
 }
 
