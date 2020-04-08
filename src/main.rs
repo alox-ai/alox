@@ -328,9 +328,9 @@ actor A {
     let guard = compiler.modules.read().unwrap();
     for module in guard.iter() {
         printer.print_module(&compiler, &module);
-        // if module.name == "valid".to_string() {
-        //     let backend = CraneLiftBackend::new();
-        //     backend.convert_module(compiler.as_ref(), module);
-        // }
+        if module.name == "valid".to_string() {
+            let backend = CraneLiftBackend::new();
+            backend.convert_module(compiler.as_ref(), module);
+        }
     }
 }

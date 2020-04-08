@@ -52,12 +52,12 @@ impl CraneLiftBackend {
     pub fn convert_type(&self, typ: Box<crate::ir::types::Type>) -> Option<Type> {
         match *typ {
             Primitive(p) => self.convert_primitive_type(p),
-            _ => { panic!("can't convert type for CL IR"); /* TODO */ }
+            t => { panic!(format!("can't convert type for CL IR: {:#?}", t)); /* TODO */ }
         }
     }
 
     /// todo: not return string
-    pub fn convert_module<'compiler>(&self, compiler: &'compiler Compiler<'compiler>, module: &Module) -> String {
+    pub fn convert_module(&self, compiler: &Compiler, module: &Module) -> String {
         let mut buffer = String::new();
         for declaration in &module.declarations {
             buffer.push_str(&self.convert_declaration(compiler, declaration, None));
@@ -67,9 +67,9 @@ impl CraneLiftBackend {
     }
 
     /// todo: not return string
-    fn convert_declaration<'compiler>(
+    fn convert_declaration(
         &self,
-        compiler: &'compiler Compiler<'compiler>,
+        compiler: &Compiler,
         dec: &Declaration,
         context: Option<Either<&Box<ir::Struct>, &Box<ir::Actor>>>,
     ) -> String {
@@ -108,9 +108,9 @@ impl CraneLiftBackend {
         }
     }
 
-    fn convert_function<'compiler>(
+    fn convert_function(
         &self,
-        compiler: &'compiler Compiler<'compiler>,
+        compiler: &Compiler,
         function: Either<&Box<ir::Function>, &Box<ir::Behaviour>>,
         context: Option<Either<&Box<ir::Struct>, &Box<ir::Actor>>>,
     ) -> CLFunction {
@@ -163,57 +163,54 @@ impl CraneLiftBackend {
         func
     }
 
-    fn convert_blocks<'compiler>(&self, compiler: &'compiler Compiler<'compiler>, mut func: &mut CLFunction, blocks: &Vec<Block>) {
+    fn convert_blocks(&self, compiler: &Compiler, mut func: &mut CLFunction, blocks: &Vec<Block>) {
         let mut fn_builder_ctx = FunctionBuilderContext::new();
         let mut builder = FunctionBuilder::new(&mut func, &mut fn_builder_ctx);
 
-        let mut value_map: HashMap<*const Instruction, Value> = HashMap::new();
-        let mut block_map: HashMap<*const Block, Ebb> = HashMap::new();
+        let mut value_map: HashMap<usize, Value> = HashMap::new();
+        let mut block_map: HashMap<usize, Ebb> = HashMap::new();
         // create an ebb for every block
-        for block in blocks {
+        for (block_id, _) in blocks.iter().enumerate() {
             let ebb = builder.create_ebb();
-            let ref_block = block as *const Block;
-            block_map.insert(ref_block, ebb);
+            block_map.insert(block_id, ebb);
         }
-        for block in blocks {
-            let ref_block = block as *const Block;
-            let current_ebb = block_map.get(&ref_block).unwrap();
+        for (block_id, block) in blocks.iter().enumerate() {
+            let current_ebb = block_map.get(&block_id).unwrap();
             builder.switch_to_block(*current_ebb);
-            for instruction in block.instructions.iter() {
-                let ref_instruction = instruction as *const Instruction;
+            for (instruction_id, instruction) in block.instructions.iter().enumerate() {
                 match *instruction {
                     Instruction::IntegerLiteral(ref i) => {
-                        let typ = self.convert_type(instruction.get_type(compiler)).expect("int literal should be an int type");
+                        let typ = self.convert_type(instruction.get_type(compiler, block)).expect("int literal should be an int type");
                         let value: Value = builder.ins().iconst(typ, i.0);
-                        value_map.insert(ref_instruction, value);
+                        value_map.insert(instruction_id, value);
                     }
                     Instruction::BooleanLiteral(ref b) => {
-                        let typ = self.convert_type(instruction.get_type(compiler)).expect("int literal should be an int type");
+                        let typ = self.convert_type(instruction.get_type(compiler, block)).expect("int literal should be an int type");
                         let value: Value = builder.ins().bconst(typ, b.0);
-                        value_map.insert(ref_instruction, value);
+                        value_map.insert(instruction_id, value);
                     }
                     // Instruction::GetParameter(ref param) => {
                     //     param.name
                     // }
                     Instruction::Jump(ref jump) => {
-                        let to_block_ref = jump.block as *const Block;
-                        let to_block_ebb = block_map.get(&to_block_ref).expect("referred to block not in function");
+                        let to_block_id = jump.block.0;
+                        let to_block_ebb = block_map.get(&to_block_id).expect("referred to block not in function");
                         builder.ins().jump(*to_block_ebb, &[]);
                     }
                     Instruction::Branch(ref branch) => {
-                        let condition_value = value_map.get(&(branch.condition as *const Instruction))
+                        let condition_value = value_map.get(&(branch.condition.0))
                             .expect("missing condition value");
-                        let true_ebb = block_map.get(&(branch.true_block as *const Block))
+                        let true_ebb = block_map.get(&(branch.true_block.0))
                             .expect("referred to block not in function");
-                        let false_ebb = block_map.get(&(branch.false_block as *const Block))
+                        let false_ebb = block_map.get(&(branch.false_block.0))
                             .expect("referred to block not in function");
                         builder.ins().brnz(*condition_value, *true_ebb, &[]);
                         builder.ins().jump(*false_ebb, &[]);
                     }
                     Instruction::Return(ref ret) => {
                         // ref of the value we're going to return
-                        let ret_value_ref = ret.instruction as *const Instruction;
-                        if let Some(value) = value_map.get(&ret_value_ref) {
+                        let ret_value_id = ret.instruction.0;
+                        if let Some(value) = value_map.get(&ret_value_id) {
                             builder.ins().return_(&[value.clone()]);
                         }
                     }

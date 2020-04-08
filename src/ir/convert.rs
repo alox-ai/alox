@@ -3,10 +3,9 @@ use std::collections::HashMap;
 use crate::ast;
 use crate::ir;
 use crate::util::Either;
-use std::sync::Mutex;
 
-impl<'compiler> ir::Compiler<'compiler> {
-    pub fn generate_ir(&'compiler self, program: ast::Program) -> ir::Module {
+impl ir::Compiler {
+    pub fn generate_ir(&self, program: ast::Program) -> ir::Module {
         // args for module
         let name = program.file_name;
         let path = program.path;
@@ -118,7 +117,7 @@ impl<'compiler> ir::Compiler<'compiler> {
     }
 
     pub fn generate_ir_behaviour(
-        &'compiler self,
+        &self,
         current_path: &ast::Path,
         declarations: &Vec<ir::Declaration>,
         b: &ast::Behaviour,
@@ -168,7 +167,7 @@ impl<'compiler> ir::Compiler<'compiler> {
     }
 
     pub fn generate_ir_function(
-        &'compiler self,
+        &self,
         current_path: &ast::Path,
         declarations: &Vec<ir::Declaration>,
         f: &ast::Function,
@@ -216,14 +215,14 @@ impl<'compiler> ir::Compiler<'compiler> {
         }))
     }
 
-    pub fn generate_ir_statement<'caller>(
-        &'compiler self,
+    pub fn generate_ir_statement(
+        &self,
         current_path: &ast::Path,
         completed_declarations: &Vec<ir::Declaration>,
-        mut lvt: &'caller mut LocalVariableTable<'compiler>,
-        mut block_builder: &'caller mut BlockBuilder<'compiler>,
+        mut lvt: &mut LocalVariableTable,
+        mut block_builder: &mut BlockBuilder,
         statement: &ast::Statement,
-    ) where 'compiler: 'caller {
+    ) {
         match statement {
             ast::Statement::VariableDeclaration(d) => {
                 if let Some(exp) = &d.initial_expression {
@@ -288,33 +287,33 @@ impl<'compiler> ir::Compiler<'compiler> {
         }
     }
 
-    fn generate_ir_if_statement<'caller>(
-        &'compiler self,
+    fn generate_ir_if_statement(
+        &self,
         current_path: &ast::Path,
         completed_declarations: &Vec<ir::Declaration>,
-        mut lvt: &'caller mut LocalVariableTable<'compiler>,
-        mut block_builder: &'caller mut BlockBuilder<'compiler>,
+        mut lvt: &mut LocalVariableTable,
+        mut block_builder: &mut BlockBuilder,
         if_statement: &Box<ast::IfStatement>,
-    ) where 'compiler: 'caller {
-        let current_block: &'compiler mut ir::Block<'compiler> = block_builder.current_block();
-
-        let current_block_ptr: *mut ir::Block = current_block as *mut ir::Block<'compiler>;
-        let current_block_copy: &mut ir::Block<'compiler> = unsafe { &mut *current_block_ptr };
+    ) {
+        let current_block_id: ir::BlockId = ir::BlockId(block_builder.current_block);
 
         let condition = self.generate_ir_expression(
             current_path,
             completed_declarations,
             lvt,
-            current_block_copy,
+            block_builder.current_block(),
             &if_statement.condition,
         );
 
-        let literal_condition: Option<bool> = match condition {
+        let condition_ins = block_builder.current_block().get_instruction(condition);
+
+        let literal_condition: Option<bool> = match condition_ins {
             ir::Instruction::BooleanLiteral(ref b) => Some((*b).0),
             _ => None,
         };
 
-        let true_block: &'compiler mut ir::Block<'compiler> = block_builder.create_block();
+        block_builder.create_block();
+        let true_block_id: ir::BlockId = ir::BlockId(block_builder.current_block);
 
         for statement in if_statement.block.iter() {
             self.generate_ir_statement(
@@ -326,7 +325,8 @@ impl<'compiler> ir::Compiler<'compiler> {
             );
         }
 
-        let false_block: &'compiler mut ir::Block<'compiler> = block_builder.create_block();
+        block_builder.create_block();
+        let false_block_id: ir::BlockId = ir::BlockId(block_builder.current_block);
 
         if let Some(elseif) = &if_statement.elseif {
             self.generate_ir_if_statement(
@@ -338,58 +338,52 @@ impl<'compiler> ir::Compiler<'compiler> {
             );
         }
 
-        let merge_block: &'compiler mut ir::Block<'compiler> = block_builder.create_block();
+        block_builder.create_block();
+        let merge_block_id: ir::BlockId = ir::BlockId(block_builder.current_block);
 
         if let Some(literal) = literal_condition {
             if literal {
-                let true_block_copy: &mut ir::Block<'compiler> = unsafe { &mut *(true_block as *mut ir::Block<'compiler>) };
-
-                let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: true_block_copy }));
-                current_block.add_instruction(jump, self);
+                let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: true_block_id }));
+                block_builder.blocks.get_mut(current_block_id.0).expect("uh we just added this block?").add_instruction(jump, self);
             } else {
-                let false_block_copy: &mut ir::Block<'compiler> = unsafe { &mut *(false_block as *mut ir::Block<'compiler>) };
-
-                let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: false_block_copy }));
-                current_block.add_instruction(jump, self);
+                let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: false_block_id }));
+                block_builder.blocks.get_mut(current_block_id.0).expect("uh we just added this block?").add_instruction(jump, self);
             }
         } else {
-            let true_block_copy: &mut ir::Block<'compiler> = unsafe { &mut *(true_block as *mut ir::Block<'compiler>) };
-            let false_block_copy: &mut ir::Block<'compiler> = unsafe { &mut *(false_block as *mut ir::Block<'compiler>) };
-
             let branch = ir::Instruction::Branch(Box::new(ir::Branch {
                 condition,
-                true_block: true_block_copy,
-                false_block: false_block_copy,
+                true_block: true_block_id,
+                false_block: false_block_id,
             }));
-            current_block.add_instruction(branch, self);
+            block_builder.blocks.get_mut(current_block_id.0).expect("uh we just added this block?").add_instruction(branch, self);
         }
 
-        let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: merge_block }));
+        let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: merge_block_id }));
         if let Some(literal) = literal_condition {
             if literal {
-                true_block.add_instruction(jump, self);
+                block_builder.blocks.get_mut(true_block_id.0).expect("uh we just added this block?").add_instruction(jump, self);
             } else {
-                false_block.add_instruction(jump, self);
+                block_builder.blocks.get_mut(false_block_id.0).expect("uh we just added this block?").add_instruction(jump, self);
             }
         }
     }
 
-    pub fn generate_ir_expression<'caller>(
-        &'compiler self,
+    pub fn generate_ir_expression(
+        &self,
         current_path: &ast::Path,
         completed_declarations: &Vec<ir::Declaration>,
-        lvt: &'caller mut LocalVariableTable<'compiler>,
-        block: &'compiler mut ir::Block<'compiler>,
+        lvt: &mut LocalVariableTable,
+        block: &mut ir::Block,
         expression: &ast::Expression,
-    ) -> &'compiler ir::Instruction where 'compiler: 'caller {
-        let block_copy: &mut ir::Block<'compiler> = unsafe { &mut *(block as *mut ir::Block<'compiler>) };
+    ) -> ir::InstructionId {
+        let block_copy: &mut ir::Block = unsafe { &mut *(block as *mut ir::Block) };
         let ins = match expression {
             ast::Expression::BooleanLiteral(b) =>
                 ir::Instruction::BooleanLiteral(Box::new(ir::BooleanLiteral(b.as_ref().0))),
             ast::Expression::IntegerLiteral(i) =>
                 ir::Instruction::IntegerLiteral(Box::new(ir::IntegerLiteral(i.as_ref().0))),
             ast::Expression::FunctionCall(call) => {
-                let block_copy2: &mut ir::Block<'compiler> = unsafe { &mut *(block_copy as *mut ir::Block<'compiler>) };
+                let block_copy2: &mut ir::Block = unsafe { &mut *(block_copy as *mut ir::Block) };
                 let function = self.generate_ir_expression(
                     current_path,
                     completed_declarations,
@@ -399,7 +393,7 @@ impl<'compiler> ir::Compiler<'compiler> {
                 );
                 let mut arguments = Vec::with_capacity(call.arguments.len());
                 for argument in call.arguments.iter() {
-                    let block_copy3: &mut ir::Block<'compiler> = unsafe { &mut *(block_copy2 as *mut ir::Block<'compiler>) };
+                    let block_copy3: &mut ir::Block = unsafe { &mut *(block_copy2 as *mut ir::Block) };
                     let argument_ins = self.generate_ir_expression(
                         current_path,
                         completed_declarations,
@@ -411,7 +405,7 @@ impl<'compiler> ir::Compiler<'compiler> {
                 }
                 ir::Instruction::FunctionCall(Box::new(
                     ir::FunctionCall {
-                        function: &function,
+                        function,
                         arguments,
                     },
                 ))
@@ -429,7 +423,7 @@ impl<'compiler> ir::Compiler<'compiler> {
                     ))
                 } else {
                     // assume the symbol is in the module
-                    let result: Option<Either<&'compiler ir::Instruction<'compiler>, ir::Instruction<'compiler>>> = lvt.get::<'caller>(name.clone());
+                    let result: Option<Either<ir::InstructionId, ir::Instruction>> = lvt.get(name.clone());
                     if let Some(result) = result {
                         match result {
                             Either::Left(reference) => {
@@ -474,54 +468,58 @@ impl<'compiler> ir::Compiler<'compiler> {
                 e.name()
             )),
         };
-        let ins: &'compiler ir::Instruction<'compiler> = block.add_instruction::<'compiler>(ins, self);
-        ins
+        block.add_instruction(ins, self)
     }
 }
 
-pub struct BlockBuilder<'a> {
-    blocks: Vec<ir::Block<'a>>,
+pub struct BlockBuilder {
+    blocks: Vec<ir::Block>,
     current_block: usize,
 }
 
-impl<'compiler> BlockBuilder<'compiler> {
+impl BlockBuilder {
     pub fn new() -> Self {
         let mut blocks = Vec::new();
-        blocks.push(ir::Block::new());
+        blocks.push(ir::Block::new(0));
         Self {
             blocks,
             current_block: 0,
         }
     }
 
-    pub fn current_block<'builder>(&'builder mut self) -> &'compiler mut ir::Block<'compiler> where 'compiler: 'builder {
-        let result: &'builder mut ir::Block<'compiler> = self.blocks.get_mut(self.current_block).unwrap();
-        let mut x = unsafe { &mut *(result as *mut ir::Block) };
-        x
+    pub fn current_block(&mut self) -> &mut ir::Block {
+        let result: &mut ir::Block = self.blocks.get_mut(self.current_block).unwrap();
+        // let mut x = unsafe { &mut *(result as *mut ir::Block) };
+        result
     }
 
-    pub fn create_block<'builder>(&'builder mut self) -> &'compiler mut ir::Block<'compiler> where 'compiler: 'builder {
-        self.blocks.push(ir::Block::new());
-        self.current_block = self.blocks.len() - 1;
+    pub fn create_block(&mut self) -> &mut ir::Block {
+        self.current_block = self.blocks.len();
+        self.blocks.push(ir::Block::new(self.current_block));
         self.current_block()
     }
 
-    pub fn add_instruction<'builder>(&'builder mut self, instruction: ir::Instruction<'compiler>) where 'compiler: 'builder {
+    pub fn add_instruction(&mut self, instruction: ir::Instruction) {
         self.blocks
             .get_mut(self.current_block)
             .unwrap()
             .instructions
             .push(instruction);
     }
+
+    pub fn block_id(&self, block: &ir::Block) -> ir::BlockId {
+        let index = self.blocks.iter().position(|b| b as *const ir::Block == block as *const ir::Block).unwrap();
+        ir::BlockId(index)
+    }
 }
 
 #[derive(Debug)]
-pub struct LocalVariableTable<'compiler> {
-    table: Vec<HashMap<String, &'compiler ir::Instruction<'compiler>>>,
+pub struct LocalVariableTable {
+    table: Vec<HashMap<String, ir::InstructionId>>,
     parameters: Vec<String>,
 }
 
-impl<'compiler> LocalVariableTable<'compiler> {
+impl LocalVariableTable {
     pub fn new_with_params(parameters: Vec<String>) -> Self {
         let mut table = Vec::new();
         table.push(HashMap::new());
@@ -540,7 +538,7 @@ impl<'compiler> LocalVariableTable<'compiler> {
         self.table.pop();
     }
 
-    pub fn get<'lvt>(&'lvt self, name: String) -> Option<Either<&'compiler ir::Instruction<'compiler>, ir::Instruction<'compiler>>> where 'compiler: 'lvt {
+    pub fn get(&self, name: String) -> Option<Either<ir::InstructionId, ir::Instruction>> {
         for x in self.table.iter().rev() {
             if let Some(instruction) = x.get(&name) {
                 return Some(Either::Left(*instruction));
@@ -557,7 +555,7 @@ impl<'compiler> LocalVariableTable<'compiler> {
         None
     }
 
-    pub fn set(&mut self, name: String, instruction: &'compiler ir::Instruction) {
+    pub fn set(&mut self, name: String, instruction: ir::InstructionId) {
         if let Some(map) = self.table.last_mut() {
             map.insert(name, instruction);
         }

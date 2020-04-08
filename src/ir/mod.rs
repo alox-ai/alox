@@ -27,6 +27,7 @@ impl DeclarationId {
     }
 
     pub fn get_type(&self) -> Box<types::Type> {
+        // TODO
         Box::new(types::Type::Unresolved(types::UnresolvedType { name: self.0.clone() }))
     }
 
@@ -35,20 +36,20 @@ impl DeclarationId {
     }
 }
 
-pub struct Compiler<'compiler> {
-    pub modules: RwLock<Vec<Module<'compiler>>>,
+pub struct Compiler {
+    pub modules: RwLock<Vec<Module>>,
     pub declaration_bank: RwLock<HashMap<DeclarationId, usize>>,
 }
 
-impl<'compiler> Compiler<'compiler> {
-    pub fn new() -> Compiler<'compiler> {
+impl Compiler {
+    pub fn new() -> Compiler {
         Compiler {
             modules: RwLock::new(Vec::with_capacity(5)),
             declaration_bank: RwLock::new(HashMap::new()),
         }
     }
 
-    pub fn add_module(&'compiler self, module: Module<'compiler>) {
+    pub fn add_module(&self, module: Module) {
         let mut bank = self.declaration_bank.write().unwrap();
         for declaration in module.declarations.iter() {
             let declaration_id = DeclarationId::from(Some(&module), declaration);
@@ -67,28 +68,28 @@ impl<'compiler> Compiler<'compiler> {
         &self,
         path: ast::Path,
         name: String,
-    ) -> Option<&'compiler Declaration> {
+    ) -> Option<&Declaration> {
         let declaration_id = DeclarationId(format!("{}::{}", path.to_string(), name));
         self.resolve(&declaration_id)
     }
 
-    pub fn resolve(&self, declaration_id: &DeclarationId) -> Option<&'compiler Declaration> {
+    pub fn resolve(&self, declaration_id: &DeclarationId) -> Option<&Declaration> {
         if let Some(declaration) = self.declaration_bank.read().unwrap().get(declaration_id) {
-            let dec_ptr = *declaration as *const Declaration<'compiler>;
+            let dec_ptr = *declaration as *const Declaration;
             Some(unsafe { &*dec_ptr })
         } else { None }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct Module<'a> {
+pub struct Module {
     /// path doesn't contain the module's name
     pub path: ast::Path,
     pub name: String,
-    pub declarations: Vec<Declaration<'a>>,
+    pub declarations: Vec<Declaration>,
 }
 
-impl Module<'_> {
+impl Module {
     pub fn full_path(&self) -> ast::Path {
         self.path.append(self.name.clone())
     }
@@ -106,17 +107,17 @@ pub enum DeclarationKind {
 }
 
 #[derive(Clone, Debug)]
-pub enum Declaration<'dec> {
-    Behaviour(Box<Behaviour<'dec>>),
-    Function(Box<Function<'dec>>),
-    Actor(Box<Actor<'dec>>),
-    Struct(Box<Struct<'dec>>),
-    Trait(Box<Trait<'dec>>),
+pub enum Declaration {
+    Behaviour(Box<Behaviour>),
+    Function(Box<Function>),
+    Actor(Box<Actor>),
+    Struct(Box<Struct>),
+    Trait(Box<Trait>),
     Variable(Box<Variable>),
     Type(Box<Type>),
 }
 
-impl<'a> Declaration<'a> {
+impl Declaration {
     pub fn name(&self) -> String {
         match self {
             Declaration::Behaviour(b) => b.name.clone(),
@@ -190,28 +191,28 @@ impl<'a> Declaration<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Actor<'actor> {
+pub struct Actor {
     pub name: String,
     // Declaration::Variable
-    pub fields: Vec<Declaration<'actor>>,
+    pub fields: Vec<Declaration>,
     // Declaration::Function
-    pub functions: Vec<Declaration<'actor>>,
+    pub functions: Vec<Declaration>,
     // Declaration::Behaviour
-    pub behaviours: Vec<Declaration<'actor>>,
+    pub behaviours: Vec<Declaration>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Struct<'strct> {
+pub struct Struct {
     pub name: String,
     // Declaration::Variable
-    pub fields: Vec<Declaration<'strct>>,
+    pub fields: Vec<Declaration>,
     // Declaration::Trait
-    pub traits: Vec<Declaration<'strct>>,
+    pub traits: Vec<Declaration>,
     // Declaration::Function
-    pub functions: Vec<Declaration<'strct>>,
+    pub functions: Vec<Declaration>,
 }
 
-impl<'strct> Struct<'strct> {
+impl Struct {
     pub fn get_type(&self) -> Box<types::Type> {
         let mut fields = Vec::with_capacity(self.fields.len());
         for field in self.fields.iter() {
@@ -224,9 +225,9 @@ impl<'strct> Struct<'strct> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Trait<'a> {
+pub struct Trait {
     pub name: String,
-    pub functions: Vec<Function<'a>>,
+    pub functions: Vec<Function>,
 }
 
 #[derive(Clone, Debug)]
@@ -248,14 +249,14 @@ impl Display for Permission {
 }
 
 #[derive(Clone, Debug)]
-pub struct Function<'a> {
+pub struct Function {
     pub name: String,
     pub arguments: Vec<(String, DeclarationId)>,
     pub return_type: DeclarationId,
-    pub blocks: Vec<Block<'a>>,
+    pub blocks: Vec<Block>,
 }
 
-impl<'a> Function<'a> {
+impl Function {
     pub fn get_type(&self) -> Box<types::Type> {
         let mut arguments = Vec::<Box<types::Type>>::with_capacity(self.arguments.len());
 
@@ -269,32 +270,34 @@ impl<'a> Function<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Behaviour<'a> {
+pub struct Behaviour {
     pub name: String,
     pub arguments: Vec<(String, DeclarationId)>,
-    pub blocks: Vec<Block<'a>>,
+    pub blocks: Vec<Block>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Block<'block> {
-    pub instructions: Vec<Instruction<'block>>,
+pub struct Block {
+    pub id: BlockId,
+    pub instructions: Vec<Instruction>,
 }
 
-impl<'block> Block<'block> {
-    pub fn new() -> Block<'block> {
+impl Block {
+    pub fn new(id: usize) -> Block {
         Block {
+            id: BlockId(id),
             instructions: Vec::with_capacity(5),
         }
     }
 
-    pub fn add_instruction<'compiler>(&'block mut self, instruction: Instruction<'block>, compiler: &'compiler Compiler<'compiler>) -> &'block Instruction<'block> where 'block: 'compiler {
+    pub fn add_instruction(&mut self, instruction: Instruction, compiler: &Compiler) -> InstructionId {
         // don't add the instruction to this block if it already has an instruction
         // that doesn't return, like Return, Branch, Jump, etc
         {
             let mut found = false;
             let mut found_ins = 0;
             for (index, instruction) in self.instructions.iter().enumerate() {
-                match *instruction.get_type(compiler) {
+                match *instruction.get_type(compiler, self) {
                     Type::Primitive(PrimitiveType::NoReturn) => {
                         found_ins = index;
                         found = true;
@@ -304,36 +307,42 @@ impl<'block> Block<'block> {
                 }
             }
             if found {
-                return self.instructions.get(found_ins).expect("couldn't find instruction we just found?");
+                return InstructionId(found_ins);
             }
         }
         self.instructions.push(instruction);
-        self.instructions.get(self.instructions.len() - 1).expect("couldn't find instruction we just added?")
+        InstructionId(self.instructions.len() - 1)
+    }
+
+    pub fn get_instruction(&self, id: InstructionId) -> &Instruction {
+        self.instructions.get(id.0 as usize).expect("invalid instruction id")
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum Instruction<'a> {
+pub enum Instruction {
     Unreachable(String),
     BooleanLiteral(Box<BooleanLiteral>),
     IntegerLiteral(Box<IntegerLiteral>),
     DeclarationReference(Box<DeclarationReference>),
     GetParameter(Box<GetParameter>),
-    FunctionCall(Box<FunctionCall<'a>>),
-    Return(Box<Return<'a>>),
-    Jump(Box<Jump<'a>>),
-    Branch(Box<Branch<'a>>),
+    FunctionCall(Box<FunctionCall>),
+    Return(Box<Return>),
+    Jump(Box<Jump>),
+    Branch(Box<Branch>),
 }
 
-impl<'ins> Instruction<'ins> {
-    pub fn get_type<'compiler: 'ins>(&self, compiler: &'compiler Compiler<'compiler>) -> Box<Type> {
+impl Instruction {
+    pub fn get_type(&self, compiler: &Compiler, block: &Block) -> Box<Type> {
         return match self {
             Instruction::BooleanLiteral(_) => builtin::BOOL.get_type(),
             Instruction::IntegerLiteral(_) => builtin::COMPTIME_INT.get_type(),
             Instruction::DeclarationReference(s) => s.declaration.get_type(),
             Instruction::GetParameter(_) => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnimplementedParamGet".to_string() })),
             Instruction::FunctionCall(f) => {
-                match *f.function {
+                let func_ins_id = f.function;
+                let ins = block.get_instruction(func_ins_id);
+                match *ins {
                     Instruction::DeclarationReference(ref f) => {
                         if let Some(ref dec) = compiler.resolve(&f.declaration) {
                             match *dec {
@@ -357,7 +366,7 @@ impl<'ins> Instruction<'ins> {
 
     /// Get type of an instruction in the context of a function or behaviour.
     /// Useful for getting the type of parameters.
-    pub fn get_type_with_context<'compiler: 'ins>(&'ins self, compiler: &'compiler Compiler<'compiler>, context: Either<&Box<Function>, &Box<Behaviour>>) -> Box<Type> {
+    pub fn get_type_with_context(&self, compiler: &Compiler, block: &Block, context: Either<&Box<Function>, &Box<Behaviour>>) -> Box<Type> {
         match self {
             Instruction::GetParameter(g) => {
                 let name = &g.name;
@@ -388,11 +397,17 @@ impl<'ins> Instruction<'ins> {
             }
             _ => {}
         }
-        self.get_type(compiler)
+        self.get_type(compiler, block)
     }
 }
 
 // -- INSTRUCTIONS -- \\
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct BlockId(pub usize);
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct InstructionId(pub usize);
 
 #[derive(Clone, Debug)]
 pub struct BooleanLiteral(pub bool);
@@ -412,24 +427,24 @@ pub struct GetParameter {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionCall<'block> {
-    pub function: &'block Instruction<'block>,
-    pub arguments: Vec<&'block Instruction<'block>>,
+pub struct FunctionCall {
+    pub function: InstructionId,
+    pub arguments: Vec<InstructionId>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Return<'block> {
-    pub instruction: &'block Instruction<'block>,
+pub struct Return {
+    pub instruction: InstructionId,
 }
 
 #[derive(Clone, Debug)]
-pub struct Jump<'block> {
-    pub block: &'block Block<'block>,
+pub struct Jump {
+    pub block: BlockId,
 }
 
 #[derive(Clone, Debug)]
-pub struct Branch<'block> {
-    pub condition: &'block Instruction<'block>,
-    pub true_block: &'block Block<'block>,
-    pub false_block: &'block Block<'block>,
+pub struct Branch {
+    pub condition: InstructionId,
+    pub true_block: BlockId,
+    pub false_block: BlockId,
 }

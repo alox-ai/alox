@@ -1,4 +1,4 @@
-use crate::ir::{Block, Declaration, Function, Module, Instruction};
+use crate::ir::{Declaration, Function, Module, Instruction};
 
 pub trait Pass {
     fn pass(&self, module: &mut Module) {
@@ -42,27 +42,25 @@ impl Pass for DeadBranchRemovalPass {
     fn pass_function(&self, function: &mut Box<Function>) {
         let mut dead_blocks = vec![];
         // go over every block
-        'blocks: for (i, block) in function.blocks.iter().enumerate() {
-            let block_ptr = block as *const Block;
+        'blocks: for (block_id, _) in function.blocks.iter().enumerate() {
             // compare every block to every other block
-            'other_blocks: for other_block in function.blocks.iter() {
-                let other_block_ptr = other_block as *const Block;
-                // make sure we're not comparing two blocks
-                if other_block_ptr == block_ptr { continue 'other_blocks; }
+            'other_blocks: for (other_block_id, other_block) in function.blocks.iter().enumerate() {
+                // make sure we're not comparing the same block
+                if other_block_id == block_id { continue 'other_blocks; }
 
                 // check if block is referenced in other_block
                 for instruction in other_block.instructions.iter() {
                     match *instruction {
                         Instruction::Jump(ref j) => {
-                            let referred_block_ptr = j.block as *const Block;
-                            if block_ptr == referred_block_ptr {
+                            let referred_block_id = j.block.0 as usize;
+                            if block_id == referred_block_id {
                                 continue 'blocks;
                             }
                         }
                         Instruction::Branch(ref b) => {
-                            let referred_true_block_ptr = b.true_block as *const Block;
-                            let referred_false_block_ptr = b.false_block as *const Block;
-                            if block_ptr == referred_true_block_ptr || block_ptr == referred_false_block_ptr {
+                            let referred_true_block_id = b.true_block.0 as usize;
+                            let referred_false_block_id = b.false_block.0 as usize;
+                            if block_id == referred_true_block_id || block_id == referred_false_block_id {
                                 continue 'blocks;
                             }
                         }
@@ -71,7 +69,7 @@ impl Pass for DeadBranchRemovalPass {
                 }
             }
             // block isn't being used
-            dead_blocks.push(i);
+            dead_blocks.push(block_id);
         }
         // ordering and reversing the indexes means we don't
         // have to do any index math when a block is removed

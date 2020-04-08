@@ -14,7 +14,7 @@ pub fn check_ir(test_name: &str, code: &str, expected_ir: &str) {
 
     let module = compiler.generate_ir(parsed_program.unwrap());
     let pass = DeadBranchRemovalPass {};
-    pass.pass(&module);
+    pass.pass(&mut module);
     compiler.add_module(module);
 
     // print the module and store it in the buffer
