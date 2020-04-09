@@ -1,10 +1,10 @@
-use crate::ir;
+use crate::ir::DeclarationId;
 use crate::ir::Declaration;
 use crate::ir::types::PrimitiveType;
 use crate::ir::types::Type;
 
-pub fn find_builtin_declaration(name: String) -> Option<&'static Declaration> {
-    match name.as_str() {
+pub fn find_builtin_declaration(declaration_id: &DeclarationId) -> Option<&'static Declaration> {
+    match declaration_id.name.as_str() {
         "Int8" => Some(&*INT8),
         "Int16" => Some(&*INT16),
         "Int32" => Some(&*INT32),

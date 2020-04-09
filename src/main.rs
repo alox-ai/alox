@@ -104,8 +104,9 @@ actor A {
         .nodes
         .push(ast::Node::VariableDeclaration(Box::new(
             ast::VariableDeclaration {
+                mutable: false,
                 name: "INT32_MAX".to_string(),
-                type_name: Some((ast::Path(vec![]), "Int32".to_string())),
+                type_name: Some((ast::Path(vec![]), "Int32".to_string()).into()),
                 initial_expression: Some(ast::Expression::IntegerLiteral(Box::new(ast::IntegerLiteral(
                     2_147_483_647,
                 )))),
@@ -120,8 +121,8 @@ actor A {
         .push(ast::Node::Function(Box::new(
             ast::Function {
                 name: "bounded".to_string(),
-                arguments: vec![("n".to_string(), (ast::Path(vec![]), "Int32".to_string()))],
-                return_type: (ast::Path(vec![]), "Bool".to_string()),
+                arguments: vec![("n".to_string(), (ast::Path(vec![]), "Int32".to_string()).into())],
+                return_type: (ast::Path(vec![]), "Bool".to_string()).into(),
                 statements: vec![ast::Statement::Return(Box::new(ast::Return {
                     expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
                         function: ast::Expression::VariableReference(Box::new(
@@ -177,10 +178,10 @@ actor A {
             ast::Function {
                 name: "add".to_string(),
                 arguments: vec![
-                    ("x".to_string(), (ast::Path(vec![]), "Int32".to_string())),
-                    ("y".to_string(), (ast::Path(vec![]), "Int32".to_string())),
+                    ("x".to_string(), (ast::Path(vec![]), "Int32".to_string()).into()),
+                    ("y".to_string(), (ast::Path(vec![]), "Int32".to_string()).into()),
                 ],
-                return_type: (ast::Path(vec![]), "Int32".to_string()),
+                return_type: (ast::Path(vec![]), "Int32".to_string()).into(),
                 statements: vec![ast::Statement::Return(Box::new(ast::Return {
                     expression: ast::Expression::FunctionCall(Box::new(ast::FunctionCall {
                         function: ast::Expression::VariableReference(Box::new(
@@ -219,9 +220,10 @@ actor A {
             ast::Function {
                 name: "main".to_string(),
                 arguments: vec![],
-                return_type: (ast::Path(vec![]), "Void".to_string()),
+                return_type: (ast::Path(vec![]), "Void".to_string()).into(),
                 statements: vec![
                     ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
+                        mutable: false,
                         name: "a".to_string(),
                         type_name: None,
                         initial_expression: Some(ast::Expression::FunctionCall(Box::new(
@@ -241,6 +243,7 @@ actor A {
                         ))),
                     })),
                     ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
+                        mutable: false,
                         name: "b".to_string(),
                         type_name: None,
                         initial_expression: Some(ast::Expression::IntegerLiteral(Box::new(
@@ -248,6 +251,7 @@ actor A {
                         ))),
                     })),
                     ast::Statement::VariableDeclaration(Box::new(ast::VariableDeclaration {
+                        mutable: false,
                         name: "c".to_string(),
                         type_name: None,
                         initial_expression: Some(ast::Expression::FunctionCall(Box::new(

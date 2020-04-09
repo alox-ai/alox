@@ -13,16 +13,32 @@ pub mod builtin;
 pub mod pass;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct DeclarationId(pub String);
+pub struct DeclarationId {
+    pub path: ast::Path,
+    pub name: String,
+    pub arguments: Vec<Box<DeclarationId>>,
+}
 
 impl DeclarationId {
     pub fn from(module: Option<&Module>, declaration: &Declaration) -> Self {
         let declaration_id = declaration.name();
         if let Some(module) = module {
-            let module_id = module.full_path().to_string();
-            DeclarationId(format!("{}::{}", module_id, declaration_id))
+            let module_id = module.full_path();
+            (module_id, declaration_id).into()
         } else {
-            DeclarationId(declaration_id)
+            declaration_id.into()
+        }
+    }
+
+    pub fn from_type_name(type_name: &ast::TypeName) -> Self {
+        let mut arguments = Vec::new();
+        for arg in type_name.arguments.iter() {
+            arguments.push(Box::new(DeclarationId::from_type_name(arg)));
+        }
+        DeclarationId {
+            path: type_name.path.clone(),
+            name: type_name.name.clone(),
+            arguments,
         }
     }
 
@@ -30,18 +46,51 @@ impl DeclarationId {
         match compiler.resolve(self) {
             Some(dec) =>
                 dec.get_type(compiler),
-            None => Box::new(types::Type::Unresolved(types::UnresolvedType::of(&format!("u*{}", self.0))))
+            None => Box::new(types::Type::Unresolved(types::UnresolvedType::of(&format!("u*{}", self.name()))))
         }
     }
 
     pub fn name(&self) -> String {
-        self.0.split("::").last().unwrap().to_string()
+        if self.arguments.len() > 0 {
+            let mut string_arguments = Vec::new();
+            for arg in self.arguments.iter() {
+                string_arguments.push(arg.name());
+            }
+            let mut name = self.name.clone();
+            name.push_str("[");
+            name.push_str(&string_arguments.join(", "));
+            name.push_str("]");
+            name
+        } else {
+            self.name.clone()
+        }
+    }
+}
+
+impl From<(ast::Path, String)> for DeclarationId {
+    fn from(pair: (ast::Path, String)) -> Self {
+        Self {
+            path: pair.0,
+            name: pair.1,
+            arguments: vec![],
+        }
+    }
+}
+
+impl From<String> for DeclarationId {
+    fn from(name: String) -> Self {
+        Self {
+            path: ast::Path::new(),
+            name,
+            arguments: vec![],
+        }
     }
 }
 
 pub struct Compiler {
     pub modules: RwLock<Vec<Module>>,
     pub declaration_bank: RwLock<HashMap<DeclarationId, usize>>,
+    pub generated_declarations: RwLock<HashMap<DeclarationId, Declaration>>,
 }
 
 impl Compiler {
@@ -49,6 +98,7 @@ impl Compiler {
         Compiler {
             modules: RwLock::new(Vec::with_capacity(5)),
             declaration_bank: RwLock::new(HashMap::new()),
+            generated_declarations: RwLock::new(HashMap::new()),
         }
     }
 
@@ -72,16 +122,47 @@ impl Compiler {
         path: ast::Path,
         name: String,
     ) -> Option<&Declaration> {
-        let declaration_id = DeclarationId(format!("{}::{}", path.to_string(), name));
+        let declaration_id = (path, name).into();
         self.resolve(&declaration_id)
     }
 
     pub fn resolve(&self, declaration_id: &DeclarationId) -> Option<&Declaration> {
-        let mut declaration_name = declaration_id.0.clone();
-        if declaration_name.starts_with("::") {
-            match builtin::find_builtin_declaration(declaration_name.split_off(2)) {
+        if declaration_id.path.0.is_empty() {
+            match builtin::find_builtin_declaration(declaration_id) {
                 Some(dec) => return Some(&dec),
-                _ => {}
+                _ => {
+                    if let Some(d) = self.generated_declarations.read().unwrap().get(declaration_id) {
+                        // copy the pointer because it points into the map and is valid as long as the compiler reference is valid
+                        let dec_ptr = d as *const Declaration;
+                        return Some(unsafe { &*dec_ptr });
+                    }
+
+                    // these are builtin types that need to be dynamically generated, such as builtin generic types
+                    let name = declaration_id.name.clone();
+                    match name.as_str() {
+                        "Pointer" | "Array" => {
+                            let mut arguments = Vec::new();
+
+                            for arg in declaration_id.arguments.iter() {
+                                let arg_type = match self.resolve(arg) {
+                                    Some(dec) => dec.get_type(self),
+                                    None => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "NoArgDec".to_string() })),
+                                };
+                                arguments.push(arg_type);
+                            }
+
+                            let type_dec = Declaration::Type(Box::new(types::Type::GenericType(types::GenericType {
+                                name,
+                                arguments,
+                            })));
+
+                            let dec_ptr = &type_dec as *const Declaration;
+                            self.generated_declarations.write().unwrap().insert(declaration_id.clone(), type_dec);
+                            return Some(unsafe { &*dec_ptr });
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
         if let Some(declaration) = self.declaration_bank.read().unwrap().get(declaration_id) {
@@ -242,6 +323,7 @@ pub struct Trait {
 
 #[derive(Clone, Debug)]
 pub struct Variable {
+    pub mutable: bool,
     pub name: String,
     pub typ: DeclarationId,
 }
@@ -332,6 +414,9 @@ impl Block {
 #[derive(Clone, Debug)]
 pub enum Instruction {
     Unreachable(String),
+    Load(Box<Load>),
+    Store(Box<Store>),
+    Alloca(Box<Alloca>),
     BooleanLiteral(Box<BooleanLiteral>),
     IntegerLiteral(Box<IntegerLiteral>),
     DeclarationReference(Box<DeclarationReference>),
@@ -365,6 +450,12 @@ impl Instruction {
                     }
                     _ => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnDecNotFunc".to_string() }))
                 }
+            }
+            Instruction::Alloca(alloca) => {
+                Box::new(types::Type::GenericType(types::GenericType { name: "Pointer".to_string(), arguments: vec![alloca.typ.clone()] }))
+            }
+            Instruction::Load(load) => {
+                load.typ.clone()
             }
             Instruction::Return(_)
             | Instruction::Unreachable(_)
@@ -418,6 +509,24 @@ pub struct BlockId(pub usize);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct InstructionId(pub usize);
+
+#[derive(Clone, Debug)]
+pub struct Load {
+    pub name: String,
+    pub typ: Box<Type>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Store {
+    pub name: String,
+    pub value: InstructionId,
+}
+
+#[derive(Clone, Debug)]
+pub struct Alloca {
+    pub name: String,
+    pub typ: Box<Type>,
+}
 
 #[derive(Clone, Debug)]
 pub struct BooleanLiteral(pub bool);

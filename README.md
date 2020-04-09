@@ -14,7 +14,7 @@ Roadmap:
 
 * Frontend
     * [x] Lexer
-    * [ ] Parser
+    * [WIP] Parser
     * [ ] Start parsing imported modules immediately
 * Middle
     * [x] AST Structure
@@ -27,7 +27,7 @@ Roadmap:
     * [ ] Validation messages
 * Backend
     * Normal Backends
-        * [ ] Look at [CraneLift](https://github.com/CraneStation/CraneLift)
+        * [WIP] Look at [CraneLift](https://github.com/CraneStation/CraneLift)
         * [ ] LLVM ([inkwell](https://github.com/TheDan64/inkwell) or [llvm-sys](https://crates.io/crates/llvm-sys))
     * GPU Backends
         * [ ] Dynamically figure out the best backend to use

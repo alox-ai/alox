@@ -1,16 +1,13 @@
 extern crate alox;
 
 use alox::ast::Path;
-use alox::ir::debug::{Printer, PrintMode};
 use alox::parser;
-use alox::ir::Compiler;
-use std::str::from_utf8_unchecked;
 
 pub fn check_ast(test_name: &str, module: &str, expected_ast: &str) {
     // parse the module and compiler it to ir
-    let mut parsed_program = parser::parse(Path::of("test"), test_name.to_string(), module.to_string());
+    let parsed_program = parser::parse(Path::of("test"), test_name.to_string(), module.to_string());
 
-    let mut ast = if let Some(program) = parsed_program {
+    let ast = if let Some(program) = parsed_program {
         format!("{:#?}", program)
     } else {
         panic!("expected ast to exist");
@@ -49,20 +46,22 @@ fun test(a: Int32): Int32 {
                 arguments: [
                     (
                         "a",
-                        (
-                            Path(
+                        TypeName {
+                            path: Path(
                                 [],
                             ),
-                            "Int32",
-                        ),
+                            name: "Int32",
+                            arguments: [],
+                        },
                     ),
                 ],
-                return_type: (
-                    Path(
+                return_type: TypeName {
+                    path: Path(
                         [],
                     ),
-                    "Int32",
-                ),
+                    name: "Int32",
+                    arguments: [],
+                },
                 statements: [
                     Return(
                         Return {
@@ -106,23 +105,26 @@ fun bar(a: Int32): Int32 {
                 arguments: [
                     (
                         "a",
-                        (
-                            Path(
+                        TypeName {
+                            path: Path(
                                 [],
                             ),
-                            "Int32",
-                        ),
+                            name: "Int32",
+                            arguments: [],
+                        },
                     ),
                 ],
-                return_type: (
-                    Path(
+                return_type: TypeName {
+                    path: Path(
                         [],
                     ),
-                    "Int32",
-                ),
+                    name: "Int32",
+                    arguments: [],
+                },
                 statements: [
                     VariableDeclaration(
                         VariableDeclaration {
+                            mutable: false,
                             name: "b",
                             type_name: None,
                             initial_expression: Some(
@@ -166,20 +168,22 @@ fun bar(a: Int32): Int32 {
                 arguments: [
                     (
                         "a",
-                        (
-                            Path(
+                        TypeName {
+                            path: Path(
                                 [],
                             ),
-                            "Int32",
-                        ),
+                            name: "Int32",
+                            arguments: [],
+                        },
                     ),
                 ],
-                return_type: (
-                    Path(
+                return_type: TypeName {
+                    path: Path(
                         [],
                     ),
-                    "Int32",
-                ),
+                    name: "Int32",
+                    arguments: [],
+                },
                 statements: [
                     Return(
                         Return {
@@ -238,20 +242,22 @@ fun test(a: Int32): Int32 {
                 arguments: [
                     (
                         "a",
-                        (
-                            Path(
+                        TypeName {
+                            path: Path(
                                 [],
                             ),
-                            "Int32",
-                        ),
+                            name: "Int32",
+                            arguments: [],
+                        },
                     ),
                 ],
-                return_type: (
-                    Path(
+                return_type: TypeName {
+                    path: Path(
                         [],
                     ),
-                    "Int32",
-                ),
+                    name: "Int32",
+                    arguments: [],
+                },
                 statements: [
                     If(
                         IfStatement {

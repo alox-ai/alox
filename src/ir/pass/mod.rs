@@ -1,5 +1,4 @@
-use crate::ir::{Declaration, Function, Module, Instruction, Block};
-use crate::util::Either;
+use crate::ir::{Declaration, Module, Instruction, Block};
 
 pub trait Pass {
     fn pass(&self, module: &mut Module) {

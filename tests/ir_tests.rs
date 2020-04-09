@@ -8,7 +8,7 @@ use alox::ir::pass::{DeadBranchRemovalPass, Pass};
 
 pub fn check_ir(test_name: &str, code: &str, expected_ir: &str) {
     // parse the module and compiler it to ir
-    let mut parsed_program = parser::parse(Path::of("test"), test_name.to_string(), code.to_string());
+    let parsed_program = parser::parse(Path::of("test"), test_name.to_string(), code.to_string());
     let compiler = Compiler::new();
 
     let mut module = compiler.generate_ir(parsed_program.unwrap());
@@ -372,5 +372,52 @@ fun @foo(%a: Bool, %b: Bool) -> Int32:
     jump block#6
   block#6:
     %0 : ComptimeInt = 3
+    ret %0");
+}
+
+#[test]
+pub fn mutable_var() {
+    check_ir("mutable_var", "\
+fun test(): Int32 {
+    var x = 1
+    return x
+}", "\
+; Module: test::mutable_var
+fun @test() -> Int32:
+  block#0:
+    %0 : ComptimeInt = 1
+    %x : Pointer[ComptimeInt] = alloca ComptimeInt
+    store %0 in %x
+    %3 : ComptimeInt = load %x
+    ret %3");
+}
+
+#[test]
+pub fn mutable_var_in_if() {
+    check_ir("mutable_var_in_if", "\
+fun test(): Int32 {
+    var x = true
+    if x {
+        return 1
+    } else {
+        return 2
+    }
+}", "\
+; Module: test::mutable_var_in_if
+fun @test() -> Int32:
+  block#0:
+    %0 : Bool = true
+    %x : Pointer[Bool] = alloca Bool
+    store %0 in %x
+    %3 : Bool = load %x
+    branch %3 block#1 block#2
+  block#1:
+    %0 : ComptimeInt = 1
+    ret %0
+  block#2:
+    %0 : Bool = true
+    jump block#3
+  block#3:
+    %0 : ComptimeInt = 2
     ret %0");
 }

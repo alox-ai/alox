@@ -1,7 +1,6 @@
 extern crate alox;
 
 use alox::ast::Path;
-use alox::ir::debug::{Printer, PrintMode};
 use alox::parser;
 use alox::ir::Compiler;
 use alox::ir::pass::{DeadBranchRemovalPass, Pass};
@@ -9,7 +8,7 @@ use alox::backend::cranelift::CraneLiftBackend;
 
 pub fn check_ir(test_name: &str, code: &str, expected_ir: &str) {
     // parse the module and compiler it to ir
-    let mut parsed_program = parser::parse(Path::of("test"), test_name.to_string(), code.to_string());
+    let parsed_program = parser::parse(Path::of("test"), test_name.to_string(), code.to_string());
     let compiler = Compiler::new();
 
     let mut module = compiler.generate_ir(parsed_program.unwrap());

@@ -2,6 +2,10 @@
 pub struct Path(pub Vec<String>);
 
 impl Path {
+    pub fn new() -> Self {
+        Path(vec![])
+    }
+
     pub fn of(s: &str) -> Self {
         Self(vec![s.to_string()])
     }
@@ -50,7 +54,7 @@ impl Expression {
             Expression::VariableReference(_) => "VariableReference",
             Expression::FunctionCall(_) => "FunctionCall",
         }
-        .to_string()
+            .to_string()
     }
 }
 
@@ -87,24 +91,56 @@ pub struct Actor {
 }
 
 #[derive(Clone, Debug)]
+pub struct TypeName {
+    pub path: Path,
+    pub name: String,
+    pub arguments: Vec<Box<TypeName>>,
+}
+
+impl TypeName {
+    pub fn to_string(&self) -> String {
+        let mut name = format!("{}::{}", self.path.to_string(), self.name);
+        if self.arguments.len() > 0 {
+            name.push_str("[");
+            for typ in self.arguments.iter() {
+                name.push_str(&typ.to_string());
+            }
+            name.push_str("]");
+        }
+        name
+    }
+}
+
+impl From<(Path, String)> for TypeName {
+    fn from(pair: (Path, String)) -> Self {
+        Self {
+            path: pair.0,
+            name: pair.1,
+            arguments: vec![],
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Function {
     pub name: String,
-    pub arguments: Vec<(String, (Path, String))>,
-    pub return_type: (Path, String),
+    pub arguments: Vec<(String, TypeName)>,
+    pub return_type: TypeName,
     pub statements: Vec<Statement>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Behaviour {
     pub name: String,
-    pub arguments: Vec<(String, (Path, String))>,
+    pub arguments: Vec<(String, TypeName)>,
     pub statements: Vec<Statement>,
 }
 
 #[derive(Clone, Debug)]
 pub struct VariableDeclaration {
+    pub mutable: bool,
     pub name: String,
-    pub type_name: Option<(Path, String)>,
+    pub type_name: Option<TypeName>,
     pub initial_expression: Option<Expression>,
 }
 

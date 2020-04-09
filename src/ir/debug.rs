@@ -233,6 +233,15 @@ impl Printer {
                 let block_id = jump.block;
                 self.print(format!("jump block#{}", block_id.0))
             }
+            Instruction::Load(ref load) => {
+                self.print(format!("%{} : {} = load %{}", id, ins_type, load.name))
+            }
+            Instruction::Store(ref store) => {
+                self.print(format!("store %{} in %{}", store.value.0, store.name))
+            }
+            Instruction::Alloca(ref alloca) => {
+                self.print(format!("%{} : {} = alloca {}", alloca.name, ins_type, alloca.typ.name()))
+            }
             ref i => self.print(format!("%{} : {} = unprintable ({:?})", id, ins_type, i)),
         }
     }

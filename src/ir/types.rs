@@ -7,6 +7,7 @@ pub enum Type {
     Struct(StructType),
     Function(FunctionType),
     Primitive(PrimitiveType),
+    GenericType(GenericType),
 }
 
 impl Type {
@@ -34,6 +35,15 @@ impl Type {
                     PrimitiveType::NoReturn => String::from("NoReturn")
                 }
             }
+            Type::GenericType(g) => {
+                let mut name = g.name.clone();
+                name.push_str("[");
+                for arg in g.arguments.iter() {
+                    name.push_str(&arg.name());
+                }
+                name.push_str("]");
+                name
+            }
         }
     }
 }
@@ -42,7 +52,7 @@ impl Debug for Type {
     fn fmt(&self, f: &mut Formatter) -> Result {
         write!(f, "{}", self.name())?;
         match self {
-            Type::Unresolved(unresolved) => { write!(f, "*"); }
+            Type::Unresolved(_) => { let _ = write!(f, "*"); }
             _ => {}
         }
         Ok(())
@@ -107,4 +117,10 @@ impl PrimitiveType {
         }
         None
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct GenericType {
+    pub name: String,
+    pub arguments: Vec<Box<Type>>,
 }

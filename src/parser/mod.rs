@@ -135,7 +135,7 @@ pub fn parse_struct(lexer: &mut Lexer, actor: bool) -> Result<Either<Struct, Act
             if let Either::Right(behaviour) = parse_function(lexer, true)? {
                 behaviours.push(behaviour);
             }
-        } else if lexer.has(Token::Let) {
+        } else if lexer.has(Token::Let) || lexer.has(Token::Var) {
             fields.push(parse_variable_declaration(lexer)?);
         } else {
             lexer.unexpected()?;
@@ -177,11 +177,8 @@ pub fn parse_function(lexer: &mut Lexer, behaviour: bool) -> Result<Either<Funct
             lexer.advance();
             lexer.skip(Token::Colon, "Expected parameter type")?;
             lexer.expect(Token::Identifier, "Expected type name after colon")?;
-            let arg_type = parse_path_ident(lexer);
-            match arg_type {
-                Some(arg_type) => arguments.push((arg_name, arg_type)),
-                None => return ParserError::from(lexer, "Expected type name after colon")
-            }
+            let arg_type = parse_type_name(lexer)?;
+            arguments.push((arg_name, arg_type));
             if lexer.has(Token::Comma) {
                 lexer.advance();
             } else {
@@ -199,15 +196,13 @@ pub fn parse_function(lexer: &mut Lexer, behaviour: bool) -> Result<Either<Funct
     }
 
     // fun main(x: a::a::a, y: b::b::b): c::c::c
-    let return_type: (Path, String);
+    let return_type: TypeName;
     if lexer.has(Token::Colon) {
         lexer.advance();
         lexer.expect(Token::Identifier, "Expected return type after colon")?;
-        let ret_type_o = parse_path_ident(lexer);
-        if let None = ret_type_o { return ParserError::from(lexer, "Expected return type after colon"); }
-        return_type = ret_type_o.unwrap();
+        return_type = parse_type_name(lexer)?;
     } else {
-        return_type = (Path(vec![]), "Void".to_string());
+        return_type = TypeName { path: Path(vec![]), name: "Void".to_string(), arguments: vec![] };
     }
 
     let mut statements = vec![];
@@ -244,7 +239,7 @@ pub fn parse_statement(lexer: &mut Lexer) -> Result<Statement, ParserError> {
         lexer.advance(); // skip return
         let expression = parse_expression(lexer)?;
         return Ok(Statement::Return(Box::new(Return { expression })));
-    } else if lexer.has(Token::Let) {
+    } else if lexer.has(Token::Let) || lexer.has(Token::Var) {
         return Ok(Statement::VariableDeclaration(Box::new(parse_variable_declaration(lexer)?)));
     } else if lexer.has(Token::If) {
         lexer.advance(); // skip if
@@ -296,20 +291,18 @@ fn parse_if_statement(lexer: &mut Lexer) -> Result<Box<IfStatement>, ParserError
 }
 
 fn parse_variable_declaration(lexer: &mut Lexer) -> Result<VariableDeclaration, ParserError> {
-    // skip let
+    let mutable = lexer.has(Token::Var);
     lexer.advance();
 
     lexer.expect(Token::Identifier, "Expected variable name after 'let'")?;
     let name = lexer.slice().to_string();
-    let type_name: Option<(Path, String)>;
     lexer.advance();
 
+    let type_name: Option<TypeName>;
     if lexer.has(Token::Colon) {
         lexer.advance();
         lexer.expect(Token::Identifier, "Expected type after colon")?;
-        let ret_type_o = parse_path_ident(lexer);
-        if let None = ret_type_o { return ParserError::from(lexer, "Couldn't parse type after colon"); }
-        type_name = Some(ret_type_o.unwrap());
+        type_name = Some(parse_type_name(lexer)?);
     } else {
         type_name = None;
     }
@@ -320,6 +313,7 @@ fn parse_variable_declaration(lexer: &mut Lexer) -> Result<VariableDeclaration, 
     } else { None };
 
     return Ok(VariableDeclaration {
+        mutable,
         name,
         type_name,
         initial_expression,
@@ -360,6 +354,29 @@ pub fn parse_expression(lexer: &mut Lexer) -> Result<Expression, ParserError> {
         }
     }
     lexer.unexpected()
+}
+
+pub fn parse_type_name(lexer: &mut Lexer) -> Result<TypeName, ParserError> {
+    let (path, name) = match parse_path_ident(lexer) {
+        Some(x) => x,
+        None => return ParserError::from(lexer, "Couldn't parse type name"),
+    };
+    let mut arguments = Vec::new();
+    if lexer.has(Token::LeftBracket) {
+        lexer.advance();
+        let arg = parse_type_name(lexer)?;
+        arguments.push(Box::new(arg));
+        while lexer.has(Token::Comma) {
+            let arg = parse_type_name(lexer)?;
+            arguments.push(Box::new(arg));
+        }
+        lexer.skip(Token::RightBracket, "Expected closing bracket in type name")?;
+    }
+    Ok(TypeName {
+        path,
+        name,
+        arguments,
+    })
 }
 
 pub fn parse_path_ident(lexer: &mut Lexer) -> Option<(Path, String)> {

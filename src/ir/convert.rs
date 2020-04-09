@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::ast;
 use crate::ir;
 use crate::util::Either;
+use crate::ir::types::Type;
 
 impl ir::Compiler {
     pub fn generate_ir(&self, program: ast::Program) -> ir::Module {
@@ -22,12 +23,13 @@ impl ir::Compiler {
 
                     for field in a.fields {
                         let declaration = if let Some(type_path) = field.type_name {
-                            ir::DeclarationId(format!("{}::{}", type_path.0.to_string(), type_path.1))
+                            ir::DeclarationId::from_type_name(&type_path)
                         } else {
                             // TODO better errors
                             panic!("No type on field")
                         };
                         let variable = ir::Declaration::Variable(Box::new(ir::Variable {
+                            mutable: field.mutable,
                             name: field.name,
                             typ: declaration,
                         }));
@@ -62,17 +64,18 @@ impl ir::Compiler {
                 }
                 ast::Node::Struct(s) => {
                     let mut fields = Vec::with_capacity(s.fields.len());
-                    let mut traits = Vec::with_capacity(s.traits.len());
+                    let traits = Vec::with_capacity(s.traits.len());
                     let mut functions = Vec::with_capacity(s.functions.len());
 
                     for field in s.fields {
                         let declaration = if let Some(type_path) = field.type_name {
-                            ir::DeclarationId(format!("{}::{}", type_path.0.to_string(), type_path.1))
+                            ir::DeclarationId::from_type_name(&type_path)
                         } else {
                             // TODO better errors
                             panic!("No type on field")
                         };
                         let variable = ir::Declaration::Variable(Box::new(ir::Variable {
+                            mutable: field.mutable,
                             name: field.name,
                             typ: declaration,
                         }));
@@ -131,7 +134,7 @@ impl ir::Compiler {
         }
 
         let mut block_builder = BlockBuilder::new();
-        let mut lvt = &mut LocalVariableTable::new_with_params(param_names);
+        let lvt = &mut LocalVariableTable::new_with_params(param_names);
 
         {
             let block_builder = &mut block_builder;
@@ -155,7 +158,7 @@ impl ir::Compiler {
 
         let mut arguments = Vec::with_capacity(b.arguments.len());
         for (name, type_path) in b.arguments.iter() {
-            let declaration_id = ir::DeclarationId(format!("{}::{}", type_path.0.to_string(), type_path.1));
+            let declaration_id = ir::DeclarationId::from_type_name(type_path);
             arguments.push((name.clone(), declaration_id));
         }
 
@@ -200,10 +203,10 @@ impl ir::Compiler {
 
         let mut arguments = Vec::with_capacity(f.arguments.len());
         for (name, type_path) in f.arguments.iter() {
-            let declaration_id = ir::DeclarationId(format!("{}::{}", type_path.0.to_string(), type_path.1));
+            let declaration_id = ir::DeclarationId::from_type_name(type_path);
             arguments.push((name.clone(), declaration_id));
         }
-        let return_type = ir::DeclarationId(format!("{}::{}", f.return_type.0.to_string(), f.return_type.1));
+        let return_type = ir::DeclarationId::from_type_name(&f.return_type);
 
         ir::Declaration::Function(Box::new(ir::Function {
             name,
@@ -225,6 +228,7 @@ impl ir::Compiler {
             ast::Statement::VariableDeclaration(d) => {
                 if let Some(exp) = &d.initial_expression {
                     let current_block = block_builder.current_block();
+
                     let expr_ins = self.generate_ir_expression(
                         current_path,
                         completed_declarations,
@@ -232,7 +236,34 @@ impl ir::Compiler {
                         current_block,
                         exp,
                     );
-                    lvt.set(d.name.clone(), expr_ins);
+
+
+                    let typ = if let Some(type_name) = &d.type_name {
+                        let declaration_id = ir::DeclarationId::from_type_name(type_name);
+                        if let Some(declaration) = self.resolve(&declaration_id) {
+                            Some(declaration.get_type(self))
+                        } else {
+                            None
+                        }
+                    } else {
+                        let typ = current_block.get_instruction(expr_ins).get_type(self, current_block);
+                        Some(typ)
+                    };
+
+                    if let Some(typ) = typ {
+                        let alloca = ir::Instruction::Alloca(Box::new(ir::Alloca {
+                            name: d.name.clone(),
+                            typ: typ.clone(),
+                        }));
+                        lvt.set(d.name.clone(), typ);
+                        block_builder.add_instruction(alloca);
+                    }
+
+                    let store = ir::Instruction::Store(Box::new(ir::Store {
+                        name: d.name.clone(),
+                        value: expr_ins,
+                    }));
+                    block_builder.add_instruction(store);
                 } else {
                     // lvt.set(d.name.clone(), &ir::Instruction::Unreachable("MissingInitialExpression".to_string()));
                     panic!("variable declaration missing initial expression");
@@ -358,14 +389,16 @@ impl ir::Compiler {
 
         let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: merge_block_id }));
         if let Some(literal) = literal_condition {
-            if literal {
-                block_builder.blocks.get_mut(true_block_id.0).expect("uh we just added this block?").add_instruction(jump, self);
+            let block_id = if literal {
+                true_block_id.0
             } else {
-                block_builder.blocks.get_mut(false_block_id.0).expect("uh we just added this block?").add_instruction(jump, self);
-            }
+                false_block_id.0
+            };
+            block_builder.blocks.get_mut(block_id).expect("uh we just added this block?").add_instruction(jump, self);
         }
     }
 
+    #[allow(unreachable_patterns)]
     pub fn generate_ir_expression(
         &self,
         current_path: &ast::Path,
@@ -409,7 +442,7 @@ impl ir::Compiler {
                 let name = r.name.clone();
                 if let Some(path) = &r.path {
                     // this is a declaration to something in a module
-                    let declaration_id = ir::DeclarationId(format!("{}::{}", path.to_string(), name.clone()));
+                    let declaration_id = (path.clone(), name.clone()).into();
                     ir::Instruction::DeclarationReference(Box::new(
                         ir::DeclarationReference {
                             name: (Some(path.clone()), name),
@@ -418,12 +451,14 @@ impl ir::Compiler {
                     ))
                 } else {
                     // assume the symbol is in the module
-                    let result: Option<Either<ir::InstructionId, ir::Instruction>> = lvt.get(name.clone());
+                    let result: Option<Either<Box<Type>, ir::Instruction>> = lvt.get(name.clone());
                     if let Some(result) = result {
                         match result {
-                            Either::Left(reference) => {
+                            Either::Left(typ) => {
                                 // return early if this instruction is already in the block
-                                return reference;
+                                // return reference;
+                                let load = ir::Instruction::Load(Box::new(ir::Load { name , typ }));
+                                load
                             }
                             Either::Right(generated) => {
                                 generated
@@ -434,7 +469,7 @@ impl ir::Compiler {
                         let mut found_dec = None;
                         for declaration in completed_declarations.iter() {
                             if declaration.name() == name {
-                                let declaration_id = ir::DeclarationId(format!("{}::{}", current_path.to_string(), name.clone()));
+                                let declaration_id = (current_path.clone(), name.clone()).into();
                                 found_dec = Some(ir::Instruction::DeclarationReference(Box::new(
                                     ir::DeclarationReference {
                                         name: (Some(current_path.clone()), name.clone()),
@@ -447,7 +482,7 @@ impl ir::Compiler {
                         if let Some(found_dec) = found_dec {
                             found_dec
                         } else {
-                            let declaration = ir::DeclarationId(format!("{}::{}", current_path.to_string(), name.clone()));
+                            let declaration = (current_path.clone(), name.clone()).into();
                             ir::Instruction::DeclarationReference(Box::new(
                                 ir::DeclarationReference {
                                     name: (Some(current_path.clone()), name),
@@ -511,7 +546,7 @@ impl BlockBuilder {
 
 #[derive(Debug)]
 pub struct LocalVariableTable {
-    table: Vec<HashMap<String, ir::InstructionId>>,
+    table: Vec<HashMap<String, Box<Type>>>,
     parameters: Vec<String>,
 }
 
@@ -534,10 +569,10 @@ impl LocalVariableTable {
         self.table.pop();
     }
 
-    pub fn get(&self, name: String) -> Option<Either<ir::InstructionId, ir::Instruction>> {
+    pub fn get(&self, name: String) -> Option<Either<Box<Type>, ir::Instruction>> {
         for x in self.table.iter().rev() {
             if let Some(instruction) = x.get(&name) {
-                return Some(Either::Left(*instruction));
+                return Some(Either::Left(instruction.clone()));
             }
         }
         // check parameters
@@ -551,9 +586,9 @@ impl LocalVariableTable {
         None
     }
 
-    pub fn set(&mut self, name: String, instruction: ir::InstructionId) {
+    pub fn set(&mut self, name: String, typ: Box<Type>) {
         if let Some(map) = self.table.last_mut() {
-            map.insert(name, instruction);
+            map.insert(name, typ);
         }
     }
 }
