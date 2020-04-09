@@ -16,6 +16,7 @@ impl ir::Compiler {
         // go over each node and generate the ir
         for node in program.nodes {
             match node {
+                ast::Node::Error => unreachable!("error parsing ast node"),
                 ast::Node::Actor(a) => {
                     let mut fields = Vec::with_capacity(a.fields.len());
                     let mut functions = Vec::with_capacity(a.functions.len());
@@ -225,6 +226,7 @@ impl ir::Compiler {
         statement: &ast::Statement,
     ) {
         match statement {
+            ast::Statement::Error => unreachable!("error parsing ast statement"),
             ast::Statement::VariableDeclaration(d) => {
                 if let Some(exp) = &d.initial_expression {
                     let current_block = block_builder.current_block();

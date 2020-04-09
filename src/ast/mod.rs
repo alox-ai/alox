@@ -36,6 +36,7 @@ pub enum Node {
     Trait(Box<Trait>),
     Function(Box<Function>),
     VariableDeclaration(Box<VariableDeclaration>),
+    Error,
 }
 
 #[derive(Clone, Debug)]
@@ -44,6 +45,7 @@ pub enum Expression {
     IntegerLiteral(Box<IntegerLiteral>),
     VariableReference(Box<VariableReference>),
     FunctionCall(Box<FunctionCall>),
+    Error,
 }
 
 impl Expression {
@@ -53,6 +55,7 @@ impl Expression {
             Expression::IntegerLiteral(_) => "IntegerLiteral",
             Expression::VariableReference(_) => "VariableReference",
             Expression::FunctionCall(_) => "FunctionCall",
+            Expression::Error => "Error",
         }
             .to_string()
     }
@@ -64,6 +67,7 @@ pub enum Statement {
     If(Box<IfStatement>),
     Return(Box<Return>),
     FunctionCall(Box<FunctionCall>),
+    Error,
 }
 
 // -- NODES -- \\

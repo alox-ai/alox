@@ -1,20 +1,19 @@
-use crate::ir::*;
+use std::collections::HashMap;
 
+use cranelift_codegen::ir::{AbiParam, Ebb, ExternalName, Function as CLFunction, InstBuilder, InstBuilderBase, Signature, Value};
 use cranelift_codegen::ir::types::*;
-use cranelift_codegen::ir::{AbiParam, ExternalName, Function as CLFunction, InstBuilder, Signature, InstBuilderBase, Value, Ebb};
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::settings;
 use cranelift_codegen::verifier::verify_function;
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_faerie::{FaerieBackend, FaerieBuilder, FaerieTrapCollection};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{self, DataId, FuncId, Linkage, Module as CraneliftModule};
+
+use crate::ir::*;
+use crate::ir;
 use crate::ir::types::PrimitiveType;
 use crate::ir::types::Type::*;
-use crate::ir;
-use std::sync::{Arc, Mutex};
 use crate::util::Either;
-use std::collections::HashMap;
-use std::borrow::Borrow;
 
 pub struct CraneLiftBackend {}
 

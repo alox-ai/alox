@@ -1,15 +1,17 @@
 extern crate alox;
 
 use alox::ast::Path;
-use alox::parser;
+use alox::parser::Parser;
 
 pub fn check_ast(test_name: &str, module: &str, expected_ast: &str) {
     // parse the module and compiler it to ir
-    let parsed_program = parser::parse(Path::of("test"), test_name.to_string(), module.to_string());
+    let mut parser = Parser::new();
+    let parsed_program = parser.parse(Path::of("test"), test_name.to_string(), module.to_string());
 
     let ast = if let Some(program) = parsed_program {
         format!("{:#?}", program)
     } else {
+        parser.emit_errors();
         panic!("expected ast to exist");
     };
 

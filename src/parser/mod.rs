@@ -1,395 +1,104 @@
 use std::ops::Range;
 
-use lexer::Lexer;
-use lexer::Token;
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use lalrpop_util::*;
+use lalrpop_util::lexer::Token;
 
 use crate::ast::*;
-use crate::util::Either;
+use crate::diagnostic::*;
 
-pub mod lexer;
+lalrpop_mod!(pub grammar, "/parser/grammar.rs");
 
-pub struct ParserError {
-    location: Range<usize>,
-    message: String,
+pub struct Parser {
+    diagnostics: DiagnosticManager,
 }
 
-impl ParserError {
-    pub fn from<T>(lexer: &mut Lexer, message: &str) -> Result<T, Self> {
-        Err(Self {
-            location: lexer.range(),
-            message: message.to_string(),
-        })
-    }
-
-    pub fn to_string(&self, source: &str) -> String {
-        let mut buffer = format!("error: {}\n", self.message);
-
-        let mut line_num = 0;
-        let mut index = 0;
-        for line in source.lines() {
-            line_num += 1;
-            if self.location.start > index && self.location.end < index + line.len() {
-                // we found the line
-                let err_header = format!("{} | ", line_num);
-                let blank_header = format!("{} | ", " ".repeat(line_num.to_string().len()));
-                buffer.push_str(&blank_header);
-                buffer.push_str(&format!("\n{}{}\n", err_header, line));
-
-                let spaces = " ".repeat(self.location.start - index - (line_num - 1));
-                let arrows = "^".repeat(self.location.end - self.location.start);
-
-                buffer.push_str(&format!("{}{}{}\n", blank_header, spaces, arrows));
-            }
-            index += line.len();
-        }
-        buffer
-    }
-}
-
-pub fn parse<'a>(path: Path, module_name: String, code: String) -> Option<Program> {
-    let mut program = Program {
-        path,
-        file_name: module_name,
-        imports: vec![],
-        nodes: vec![],
-    };
-
-    let mut lexer = Lexer::new(code.as_str());
-    while !lexer.has(Token::End) {
-        println!("token: {:?} {}", lexer.token(), lexer.slice());
-
-        if lexer.has(Token::Fun) {
-            // function header
-            lexer.advance();
-
-            match parse_function(&mut lexer, false) {
-                Ok(dec) => {
-                    match dec {
-                        Either::Left(func) => {
-                            program.nodes.push(Node::Function(Box::new(func)));
-                        }
-                        _ => {}
-                    }
-                }
-                Err(err) => {
-                    let err = err.to_string(lexer.inner.source);
-                    eprintln!("{}", err);
-                    return None;
-                }
-            }
-        } else if lexer.has(Token::Struct) {
-            lexer.advance();
-
-            match parse_struct(&mut lexer, false) {
-                Ok(Either::Left(dec)) => {
-                    program.nodes.push(Node::Struct(Box::new(dec)));
-                }
-                Err(err) => {
-                    let err = err.to_string(lexer.inner.source);
-                    eprintln!("{}", err);
-                    return None;
-                }
-                _ => {}
-            }
-        } else if lexer.has(Token::Actor) {
-            lexer.advance();
-
-            match parse_struct(&mut lexer, true) {
-                Ok(Either::Right(dec)) => {
-                    program.nodes.push(Node::Actor(Box::new(dec)));
-                }
-                Err(err) => {
-                    let err = err.to_string(lexer.inner.source);
-                    eprintln!("{}", err);
-                    return None;
-                }
-                _ => {}
-            }
-        } else {
-            lexer.advance();
+impl Parser {
+    pub fn new() -> Self {
+        Self {
+            diagnostics: DiagnosticManager::new()
         }
     }
 
-    Some(program)
-}
+    fn get_range(error: ParseError<usize, Token, &str>) -> Range<usize> {
+        match error {
+            ParseError::InvalidToken { location } => (location..location),
+            ParseError::UnrecognizedEOF { location, expected: _ } => (location..location),
+            ParseError::UnrecognizedToken { token, expected: _ } => (token.0..token.2),
+            ParseError::ExtraToken { token } => (token.0..token.2),
+            ParseError::User { error: _ } => (0..0)
+        }
+    }
 
-pub fn parse_struct(lexer: &mut Lexer, actor: bool) -> Result<Either<Struct, Actor>, ParserError> {
-    // struct X {
-    lexer.expect(Token::Identifier, "Expected struct name")?;
-    let name = lexer.slice().to_string();
-    lexer.advance();
-    lexer.skip(Token::LeftBrace, "Expected opening brace")?;
-
-    let mut functions = vec![];
-    let mut behaviours = vec![];
-    let mut fields = vec![];
-
-    while !lexer.has(Token::RightBrace) {
-        if lexer.has(Token::Fun) {
-            lexer.advance();
-            if let Either::Left(function) = parse_function(lexer, false)? {
-                functions.push(function);
+    fn add_parse_error(&mut self, file_id: FileId, error: ParseError<usize, Token, &str>) {
+        let message = match &error {
+            ParseError::InvalidToken { location: _ } => "encountered invalid token while parsing".to_string(),
+            ParseError::UnrecognizedEOF { location: _, expected: _ } => {
+                format!("encountered unexpected EOF while parsing")
             }
-        } else if lexer.has(Token::Behave) && actor {
-            lexer.advance();
-            if let Either::Right(behaviour) = parse_function(lexer, true)? {
-                behaviours.push(behaviour);
+            ParseError::UnrecognizedToken { token, expected: _ } => {
+                format!("encountered unexpected '{}' while parsing", (token.1).1)
             }
-        } else if lexer.has(Token::Let) || lexer.has(Token::Var) {
-            fields.push(parse_variable_declaration(lexer)?);
-        } else {
-            lexer.unexpected()?;
-        }
-    }
-    lexer.skip(Token::RightBrace, "Expected closing brace")?;
-
-    if actor {
-        Ok(Either::Right(Actor {
-            name,
-            fields,
-            functions,
-            behaviours,
-        }))
-    } else {
-        Ok(Either::Left(Struct {
-            name,
-            traits: vec![],
-            fields,
-            functions,
-        }))
-    }
-}
-
-pub fn parse_function(lexer: &mut Lexer, behaviour: bool) -> Result<Either<Function, Behaviour>, ParserError> {
-    // fun main
-    lexer.expect(Token::Identifier, "Expected function name")?;
-    let function_name = lexer.slice().to_string();
-    lexer.advance();
-
-    // fun main(
-    lexer.skip(Token::LeftParen, "Expected opening paren")?;
-
-    // fun main(x: a::a::a, y: b::b::b
-    let mut arguments = vec![];
-    if lexer.has(Token::Identifier) {
-        while lexer.has(Token::Identifier) {
-            let arg_name = lexer.slice().to_string();
-            lexer.advance();
-            lexer.skip(Token::Colon, "Expected parameter type")?;
-            lexer.expect(Token::Identifier, "Expected type name after colon")?;
-            let arg_type = parse_type_name(lexer)?;
-            arguments.push((arg_name, arg_type));
-            if lexer.has(Token::Comma) {
-                lexer.advance();
-            } else {
-                break;
+            ParseError::ExtraToken { token } => {
+                format!("encountered unexpected '{}' while parsing but it is not needed", (token.1).1)
             }
-        }
-
-        // fun main(x: a::a::a, y: b::b::b)
-        lexer.skip(Token::RightParen, "Expected closing paren")?;
-    } else if lexer.has(Token::RightParen) {
-        // fun main()
-        lexer.advance();
-    } else {
-        lexer.unexpected()?;
-    }
-
-    // fun main(x: a::a::a, y: b::b::b): c::c::c
-    let return_type: TypeName;
-    if lexer.has(Token::Colon) {
-        lexer.advance();
-        lexer.expect(Token::Identifier, "Expected return type after colon")?;
-        return_type = parse_type_name(lexer)?;
-    } else {
-        return_type = TypeName { path: Path(vec![]), name: "Void".to_string(), arguments: vec![] };
-    }
-
-    let mut statements = vec![];
-    if lexer.has(Token::Semicolon) {
-        lexer.advance();
-    } else if lexer.has(Token::LeftBrace) {
-        lexer.advance();
-        while !lexer.has(Token::RightBrace) {
-            statements.push(parse_statement(lexer)?);
-        }
-        lexer.advance();
-    } else {
-        lexer.unexpected()?;
-    }
-
-    if behaviour {
-        Ok(Either::Right(Behaviour {
-            name: function_name,
-            arguments,
-            statements,
-        }))
-    } else {
-        Ok(Either::Left(Function {
-            name: function_name,
-            arguments,
-            return_type,
-            statements,
-        }))
-    }
-}
-
-pub fn parse_statement(lexer: &mut Lexer) -> Result<Statement, ParserError> {
-    if lexer.has(Token::Return) {
-        lexer.advance(); // skip return
-        let expression = parse_expression(lexer)?;
-        return Ok(Statement::Return(Box::new(Return { expression })));
-    } else if lexer.has(Token::Let) || lexer.has(Token::Var) {
-        return Ok(Statement::VariableDeclaration(Box::new(parse_variable_declaration(lexer)?)));
-    } else if lexer.has(Token::If) {
-        lexer.advance(); // skip if
-        return Ok(Statement::If(parse_if_statement(lexer)?));
-    }
-    lexer.unexpected()
-}
-
-fn parse_if_statement(lexer: &mut Lexer) -> Result<Box<IfStatement>, ParserError> {
-    let expression = parse_expression(lexer)?;
-    lexer.skip(Token::LeftBrace, "Expected block after if expression")?;
-
-    // parse statements
-    let mut statements = vec![];
-    while !lexer.has(Token::RightBrace) {
-        statements.push(parse_statement(lexer)?);
-    }
-    lexer.advance();
-
-    let mut if_statement = IfStatement {
-        condition: expression,
-        block: statements,
-        elseif: None,
-    };
-
-    if lexer.has(Token::Else) {
-        lexer.advance();
-        if lexer.has(Token::If) {
-            lexer.advance();
-            if_statement.elseif = Some(parse_if_statement(lexer)?);
-        } else if lexer.has(Token::LeftBrace) {
-            lexer.advance();
-            let mut statements = vec![];
-            while !lexer.has(Token::RightBrace) {
-                statements.push(parse_statement(lexer)?);
+            ParseError::User { error } => {
+                error.to_string()
             }
-            lexer.advance();
-            if_statement.elseif = Some(Box::new(IfStatement {
-                condition: Expression::BooleanLiteral(Box::new(BooleanLiteral(true))),
-                block: statements,
-                elseif: None,
-            }));
-        } else {
-            lexer.unexpected()?;
+        };
+        let label_message = match &error {
+            ParseError::InvalidToken { location: _ } => Some("this token is invalid"),
+            ParseError::UnrecognizedEOF { location: _, expected: _ } => Some("unexpected end of file"),
+            ParseError::UnrecognizedToken { token: _, expected: _ } => Some("unexpected token"),
+            ParseError::ExtraToken { token: _ } => Some("unexpected token"),
+            ParseError::User { error } => Some(*error),
+        };
+        let range = Self::get_range(error);
+
+        let mut label = Label::primary(file_id, range);
+        if let Some(label_message) = label_message {
+            label = label.with_message(label_message);
         }
+
+        let diagnostic = Diagnostic::error()
+            .with_message(message)
+            .with_labels(vec![label]);
+        self.diagnostics.add_diagnostic(diagnostic);
     }
 
-    Ok(Box::new(if_statement))
-}
+    pub fn parse(&mut self, path: Path, file_name: String, code: String) -> Option<Program> {
+        let file_id = self.diagnostics.add_file(file_name.clone(), code.clone());
+        let file_name_parts: Vec<&str> = file_name.rsplitn(2, ".").collect();
+        let module_name = file_name_parts.get(0).unwrap();
 
-fn parse_variable_declaration(lexer: &mut Lexer) -> Result<VariableDeclaration, ParserError> {
-    let mutable = lexer.has(Token::Var);
-    lexer.advance();
+        let mut errors: Vec<ErrorRecovery<usize, Token, &str>> = Vec::new();
+        let result: Result<(Vec<Path>, Vec<Node>), ParseError<usize, Token, &str>> = grammar::ProgramParser::new().parse(&mut errors, &code);
 
-    lexer.expect(Token::Identifier, "Expected variable name after 'let'")?;
-    let name = lexer.slice().to_string();
-    lexer.advance();
-
-    let type_name: Option<TypeName>;
-    if lexer.has(Token::Colon) {
-        lexer.advance();
-        lexer.expect(Token::Identifier, "Expected type after colon")?;
-        type_name = Some(parse_type_name(lexer)?);
-    } else {
-        type_name = None;
-    }
-
-    let initial_expression = if lexer.has(Token::Equals) {
-        lexer.advance();
-        Some(parse_expression(lexer)?)
-    } else { None };
-
-    return Ok(VariableDeclaration {
-        mutable,
-        name,
-        type_name,
-        initial_expression,
-    });
-}
-
-pub fn parse_expression(lexer: &mut Lexer) -> Result<Expression, ParserError> {
-    if lexer.has(Token::True) {
-        lexer.advance();
-        return Ok(Expression::BooleanLiteral(Box::new(BooleanLiteral(true))));
-    } else if lexer.has(Token::False) {
-        lexer.advance();
-        return Ok(Expression::BooleanLiteral(Box::new(BooleanLiteral(false))));
-    } else if lexer.has(Token::IntegerLiteral) {
-        let num = lexer.slice().parse::<i64>().unwrap();
-        lexer.advance();
-        return Ok(Expression::IntegerLiteral(Box::new(IntegerLiteral(num))));
-    } else if lexer.has(Token::Identifier) {
-        let path_ident = parse_path_ident(lexer).unwrap();
-        let path = if (path_ident.0).0.len() > 0 { Some(path_ident.0) } else { None };
-        let variable_reference = Expression::VariableReference(Box::new(VariableReference { path, name: path_ident.1 }));
-        if lexer.has(Token::LeftParen) {
-            // function call
-            lexer.advance();
-            let mut arguments = vec![];
-            while !lexer.has(Token::RightParen) {
-                arguments.push(parse_expression(lexer)?);
-                if lexer.has(Token::RightParen) { break; }
-                lexer.skip(Token::Comma, "Expected comma between function call arguments")?;
+        if errors.len() > 0 {
+            for error in errors {
+                self.add_parse_error(file_id, error.error);
             }
-            lexer.advance();
-            return Ok(Expression::FunctionCall(Box::new(FunctionCall {
-                function: variable_reference,
-                arguments,
-            })));
-        } else {
-            return Ok(variable_reference);
+            return None;
         }
+
+        return match result {
+            Ok((imports, nodes)) => {
+                Some(Program {
+                    path,
+                    file_name: module_name.to_string(),
+                    imports,
+                    nodes,
+                })
+            }
+            Err(error) => {
+                self.add_parse_error(file_id, error);
+                None
+            }
+        };
     }
-    lexer.unexpected()
+
+    pub fn emit_errors(&self) {
+        self.diagnostics.emit_errors();
+    }
 }
 
-pub fn parse_type_name(lexer: &mut Lexer) -> Result<TypeName, ParserError> {
-    let (path, name) = match parse_path_ident(lexer) {
-        Some(x) => x,
-        None => return ParserError::from(lexer, "Couldn't parse type name"),
-    };
-    let mut arguments = Vec::new();
-    if lexer.has(Token::LeftBracket) {
-        lexer.advance();
-        let arg = parse_type_name(lexer)?;
-        arguments.push(Box::new(arg));
-        while lexer.has(Token::Comma) {
-            let arg = parse_type_name(lexer)?;
-            arguments.push(Box::new(arg));
-        }
-        lexer.skip(Token::RightBracket, "Expected closing bracket in type name")?;
-    }
-    Ok(TypeName {
-        path,
-        name,
-        arguments,
-    })
-}
-
-pub fn parse_path_ident(lexer: &mut Lexer) -> Option<(Path, String)> {
-    let mut path = Path(vec![]);
-    while lexer.has(Token::Identifier) {
-        let part = lexer.slice().to_string();
-        lexer.advance();
-        if lexer.has(Token::DoubleColon) {
-            path = path.append(part);
-            lexer.advance();
-        } else {
-            return Some((path, part));
-        }
-    }
-    None
-}

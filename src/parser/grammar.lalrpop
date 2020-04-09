@@ -1,0 +1,247 @@
+use std::str::FromStr;
+use lalrpop_util::ErrorRecovery;
+use crate::ast::*;
+
+grammar<'err>(errors: &'err mut Vec<ErrorRecovery<usize, lalrpop_util::lexer::Token<'input>, &'static str>>);
+
+pub Program: (Vec<Path>, Vec<Node>) = {
+    <imports:Path*> <nodes:Node*> => (imports, nodes),
+};
+
+pub Import: Path = {
+    "import" <p:Path> => p
+};
+
+// NODES
+
+pub Node: Node = {
+    <actor:Actor> => Node::Actor(Box::new(actor)),
+    <struc:Struct> => Node::Struct(Box::new(struc)),
+    <function:Function> => Node::Function(Box::new(function)),
+    <variable_declaration:VariableDeclaration> => Node::VariableDeclaration(Box::new(variable_declaration)),
+    ! => { errors.push(<>); Node::Error },
+};
+
+pub Actor: Actor = {
+    "actor" <name:Name> "{" <declarations:ActorBodyParts> "}" => Actor {
+        name: name,
+        fields: declarations.0,
+        functions: declarations.1,
+        behaviours: declarations.2,
+    }
+};
+
+pub ActorBodyParts: (Vec<VariableDeclaration>, Vec<Function>, Vec<Behaviour>) = {
+    <parts:ActorBodyPart*> => {
+        let mut fields = vec![];
+        let mut functions = vec![];
+        let mut behaviours = vec![];
+
+        for (field, function, behaviour) in parts {
+            if let Some(field) = field {
+                fields.push(field);
+            }
+            if let Some(function) = function {
+                functions.push(function);
+            }
+            if let Some(behaviour) = behaviour {
+                behaviours.push(behaviour);
+            }
+        }
+
+        (fields, functions, behaviours)
+    }
+};
+
+pub ActorBodyPart: (Option<VariableDeclaration>, Option<Function>, Option<Behaviour>) = {
+    <VariableDeclaration> => (Some(<>), None, None),
+    <Function> => (None, Some(<>), None),
+    <Behaviour> => (None, None, Some(<>)),
+};
+
+pub Struct: Struct = {
+    "struct" <name:Name> "{" <declarations:StructBodyParts> "}" => Struct {
+        name: name,
+        traits: vec![],
+        fields: declarations.0,
+        functions: declarations.1,
+    }
+};
+
+pub StructBodyParts: (Vec<VariableDeclaration>, Vec<Function>) = {
+    <parts:StructBodyPart*> => {
+        let mut fields = vec![];
+        let mut functions = vec![];
+
+        for (field, function) in parts {
+            if let Some(field) = field {
+                fields.push(field);
+            }
+            if let Some(function) = function {
+                functions.push(function);
+            }
+        }
+
+        (fields, functions)
+    }
+};
+
+pub StructBodyPart: (Option<VariableDeclaration>, Option<Function>) = {
+    <VariableDeclaration> => (Some(<>), None),
+    <Function> => (None, Some(<>)),
+};
+
+pub Function: Function = {
+    "fun" <name:Name> "(" <args:Comma<NameWithType>> ")" <return_type:(":" <TypeName>)?> "{" <statements:Statement*> "}" => {
+        let r = match return_type {
+            Some(t) => t,
+            None => TypeName {path:Path(vec![]), name: "Void".to_string(), arguments: vec![]},
+        };
+        Function {
+            name: name,
+            arguments: args,
+            return_type: r,
+            statements: statements,
+        }
+    }
+};
+
+pub Behaviour: Behaviour = {
+    "behave" <name:Name> "(" <args:Comma<NameWithType>> ")" "{" <statements:Statement*> "}" => Behaviour {
+        name: name,
+        arguments: args,
+        statements: statements,
+    }
+};
+
+// STATEMENTS
+
+pub Statement: Statement = {
+    <v:VariableDeclaration> => Statement::VariableDeclaration(Box::new(v)),
+    "return" <e:Expr> => Statement::Return(Box::new(Return{expression:e})),
+    <ifstatement:IfStatement> => Statement::If(ifstatement),
+    ! => { errors.push(<>); Statement::Error },
+};
+
+pub IfStatement: Box<IfStatement> = {
+    "if" <condition:Expr> "{" <block:Statement*> "}" <elseif:("else" <IfStatement>)?> => {
+        Box::new(IfStatement {
+            condition: condition,
+            block: block,
+            elseif: elseif,
+        })
+    },
+    "if" <condition:Expr> "{" <block:Statement*> "}" "else" "{" <elseblock:Statement*> "}" => {
+        let elseif = Box::new(IfStatement {
+            condition: Expression::BooleanLiteral(Box::new(BooleanLiteral(true))),
+            block: elseblock,
+            elseif: None,
+        });
+        Box::new(IfStatement {
+            condition: condition,
+            block: block,
+            elseif: Some(elseif),
+        })
+    },
+};
+
+pub VariableDeclaration: VariableDeclaration = {
+    "let" <name:Name> <type_name:(":" <TypeName>)?> <expr:("=" <Expr>)?> => VariableDeclaration {
+        mutable: false,
+        name: name,
+        type_name: type_name,
+        initial_expression: expr,
+    },
+    "var" <name:Name> <type_name:(":" <TypeName>)?> <expr:("=" <Expr>)?> => VariableDeclaration {
+        mutable: true,
+        name: name,
+        type_name: type_name,
+        initial_expression: expr,
+    },
+};
+
+// EXPRESSIONS
+
+pub Expr: Expression = {
+    <n:Num> => Expression::IntegerLiteral(Box::new(IntegerLiteral(n))),
+    <b:Bool> => Expression::BooleanLiteral(Box::new(BooleanLiteral(b))),
+    <f:FunctionCall> => Expression::FunctionCall(Box::new(f)),
+    <path:Path?> <name:Name> => Expression::VariableReference(Box::new(VariableReference {
+        path: path,
+        name: name,
+    })),
+    ! => { errors.push(<>); Expression::Error },
+};
+
+pub FunctionCall: FunctionCall = {
+    <function:Expr> "(" <args:Comma<Expr>>  ")" => FunctionCall {
+        function: function,
+        arguments: args,
+    }
+};
+
+// PARTS
+
+pub TypeName: TypeName = {
+    <name:NamespacedName> <args:("[" <Comma<TypeName>> "]")?> => {
+        let mut boxed_args: Vec<Box<TypeName>> = Vec::new();
+        match args {
+            Some(args) => {
+                for arg in args {
+                    boxed_args.push(Box::new(arg));
+                }
+            }
+            _ => {}
+        }
+        TypeName {
+            path: name.0,
+            name: name.1,
+            arguments: boxed_args,
+        }
+    }
+};
+
+pub NameWithType: (String, TypeName) = {
+    <name:Name> ":" <type_name:TypeName> => (name, type_name),
+};
+
+pub NamespacedName: (Path, String) = {
+    <n:(<Name> "::")*> <e:Name> => (Path(n), e)
+};
+
+pub Path: Path = {
+    <names:(Name "::")*> <e:Name> => {
+        let mut parts = Vec::with_capacity(names.len());
+        for name in names {
+            parts.push(name.0);
+        }
+        parts.push(e);
+        Path(parts)
+    }
+};
+
+pub Bool: bool = {
+    "true" => true,
+    "false" => false,
+};
+
+pub Num: i64 = {
+    r"[0-9]+" => i64::from_str(<>).unwrap()
+};
+
+pub Name: String = {
+    r"[a-zA-Z][a-zA-Z0-9_]*" => <>.to_string()
+};
+
+// MACROS
+
+Comma<T>: Vec<T> = {
+    <v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};

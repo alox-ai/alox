@@ -14,7 +14,7 @@ Roadmap:
 
 * Frontend
     * [x] Lexer
-    * [WIP] Parser
+    * [ ] Parser _WIP_
     * [ ] Start parsing imported modules immediately
 * Middle
     * [x] AST Structure
@@ -23,17 +23,17 @@ Roadmap:
     * [x] AST Expression -> IR Instruction conversion
     * [ ] Passes to validate things
 * Error messages
-    * [x] Parser error messages
+    * [ ] Parser error messages
     * [ ] Validation messages
 * Backend
     * Normal Backends
-        * [WIP] Look at [CraneLift](https://github.com/CraneStation/CraneLift)
+        * [ ] [CraneLift](https://github.com/CraneStation/CraneLift) _WIP_
         * [ ] LLVM ([inkwell](https://github.com/TheDan64/inkwell) or [llvm-sys](https://crates.io/crates/llvm-sys))
     * GPU Backends
-        * [ ] Dynamically figure out the best backend to use
         * [ ] SPIR-V ([rspirv](https://github.com/gfx-rs/rspirv))
         * [ ] CUDA ([libcuda](https://github.com/peterhj/libcuda))
         * [ ] OpenCL (for older platforms?) ([ocl](https://github.com/cogciprocate/ocl))
+        * [ ] Dynamically figure out the best backend to use
 * Runtime
     * [ ] Schedulers
     * [ ] Cross-node communication
