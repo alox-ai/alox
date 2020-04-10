@@ -7,7 +7,7 @@ use lalrpop_util::lexer::Token;
 use crate::ast::*;
 use crate::diagnostic::*;
 
-lalrpop_mod!(pub grammar, "/parser/grammar.rs");
+lalrpop_mod!(#[allow(clippy::all)] #[allow(warnings)] #[allow(unknown_lints)] pub grammar, "/parser/grammar.rs");
 
 pub struct Parser {
     diagnostics: DiagnosticManager,

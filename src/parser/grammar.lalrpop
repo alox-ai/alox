@@ -8,13 +8,13 @@ pub Program: (Vec<Path>, Vec<Node>) = {
     <imports:Path*> <nodes:Node*> => (imports, nodes),
 };
 
-pub Import: Path = {
+Import: Path = {
     "import" <p:Path> => p
 };
 
 // NODES
 
-pub Node: Node = {
+Node: Node = {
     <actor:Actor> => Node::Actor(Box::new(actor)),
     <struc:Struct> => Node::Struct(Box::new(struc)),
     <function:Function> => Node::Function(Box::new(function)),
@@ -22,7 +22,7 @@ pub Node: Node = {
     ! => { errors.push(<>); Node::Error },
 };
 
-pub Actor: Actor = {
+Actor: Actor = {
     "actor" <name:Name> "{" <declarations:ActorBodyParts> "}" => Actor {
         name: name,
         fields: declarations.0,
@@ -31,7 +31,7 @@ pub Actor: Actor = {
     }
 };
 
-pub ActorBodyParts: (Vec<VariableDeclaration>, Vec<Function>, Vec<Behaviour>) = {
+ActorBodyParts: (Vec<VariableDeclaration>, Vec<Function>, Vec<Behaviour>) = {
     <parts:ActorBodyPart*> => {
         let mut fields = vec![];
         let mut functions = vec![];
@@ -53,13 +53,13 @@ pub ActorBodyParts: (Vec<VariableDeclaration>, Vec<Function>, Vec<Behaviour>) = 
     }
 };
 
-pub ActorBodyPart: (Option<VariableDeclaration>, Option<Function>, Option<Behaviour>) = {
+ActorBodyPart: (Option<VariableDeclaration>, Option<Function>, Option<Behaviour>) = {
     <VariableDeclaration> => (Some(<>), None, None),
     <Function> => (None, Some(<>), None),
     <Behaviour> => (None, None, Some(<>)),
 };
 
-pub Struct: Struct = {
+Struct: Struct = {
     "struct" <name:Name> "{" <declarations:StructBodyParts> "}" => Struct {
         name: name,
         traits: vec![],
@@ -68,7 +68,7 @@ pub Struct: Struct = {
     }
 };
 
-pub StructBodyParts: (Vec<VariableDeclaration>, Vec<Function>) = {
+StructBodyParts: (Vec<VariableDeclaration>, Vec<Function>) = {
     <parts:StructBodyPart*> => {
         let mut fields = vec![];
         let mut functions = vec![];
@@ -86,12 +86,12 @@ pub StructBodyParts: (Vec<VariableDeclaration>, Vec<Function>) = {
     }
 };
 
-pub StructBodyPart: (Option<VariableDeclaration>, Option<Function>) = {
+StructBodyPart: (Option<VariableDeclaration>, Option<Function>) = {
     <VariableDeclaration> => (Some(<>), None),
     <Function> => (None, Some(<>)),
 };
 
-pub Function: Function = {
+Function: Function = {
     "fun" <name:Name> "(" <args:Comma<NameWithType>> ")" <return_type:(":" <TypeName>)?> "{" <statements:Statement*> "}" => {
         let r = match return_type {
             Some(t) => t,
@@ -106,7 +106,7 @@ pub Function: Function = {
     }
 };
 
-pub Behaviour: Behaviour = {
+Behaviour: Behaviour = {
     "behave" <name:Name> "(" <args:Comma<NameWithType>> ")" "{" <statements:Statement*> "}" => Behaviour {
         name: name,
         arguments: args,
@@ -116,14 +116,14 @@ pub Behaviour: Behaviour = {
 
 // STATEMENTS
 
-pub Statement: Statement = {
+Statement: Statement = {
     <v:VariableDeclaration> => Statement::VariableDeclaration(Box::new(v)),
     "return" <e:Expr> => Statement::Return(Box::new(Return{expression:e})),
     <ifstatement:IfStatement> => Statement::If(ifstatement),
     ! => { errors.push(<>); Statement::Error },
 };
 
-pub IfStatement: Box<IfStatement> = {
+IfStatement: Box<IfStatement> = {
     "if" <condition:Expr> "{" <block:Statement*> "}" <elseif:("else" <IfStatement>)?> => {
         Box::new(IfStatement {
             condition: condition,
@@ -145,7 +145,7 @@ pub IfStatement: Box<IfStatement> = {
     },
 };
 
-pub VariableDeclaration: VariableDeclaration = {
+VariableDeclaration: VariableDeclaration = {
     "let" <name:Name> <type_name:(":" <TypeName>)?> <expr:("=" <Expr>)?> => VariableDeclaration {
         mutable: false,
         name: name,
@@ -162,7 +162,7 @@ pub VariableDeclaration: VariableDeclaration = {
 
 // EXPRESSIONS
 
-pub Expr: Expression = {
+Expr: Expression = {
     <n:Num> => Expression::IntegerLiteral(Box::new(IntegerLiteral(n))),
     <b:Bool> => Expression::BooleanLiteral(Box::new(BooleanLiteral(b))),
     <f:FunctionCall> => Expression::FunctionCall(Box::new(f)),
@@ -173,7 +173,7 @@ pub Expr: Expression = {
     ! => { errors.push(<>); Expression::Error },
 };
 
-pub FunctionCall: FunctionCall = {
+FunctionCall: FunctionCall = {
     <function:Expr> "(" <args:Comma<Expr>>  ")" => FunctionCall {
         function: function,
         arguments: args,
@@ -182,7 +182,7 @@ pub FunctionCall: FunctionCall = {
 
 // PARTS
 
-pub TypeName: TypeName = {
+TypeName: TypeName = {
     <name:NamespacedName> <args:("[" <Comma<TypeName>> "]")?> => {
         let mut boxed_args: Vec<Box<TypeName>> = Vec::new();
         match args {
@@ -201,15 +201,15 @@ pub TypeName: TypeName = {
     }
 };
 
-pub NameWithType: (String, TypeName) = {
+NameWithType: (String, TypeName) = {
     <name:Name> ":" <type_name:TypeName> => (name, type_name),
 };
 
-pub NamespacedName: (Path, String) = {
+NamespacedName: (Path, String) = {
     <n:(<Name> "::")*> <e:Name> => (Path(n), e)
 };
 
-pub Path: Path = {
+Path: Path = {
     <names:(Name "::")*> <e:Name> => {
         let mut parts = Vec::with_capacity(names.len());
         for name in names {
@@ -220,16 +220,16 @@ pub Path: Path = {
     }
 };
 
-pub Bool: bool = {
+Bool: bool = {
     "true" => true,
     "false" => false,
 };
 
-pub Num: i64 = {
+Num: i64 = {
     r"[0-9]+" => i64::from_str(<>).unwrap()
 };
 
-pub Name: String = {
+Name: String = {
     r"[a-zA-Z][a-zA-Z0-9_]*" => <>.to_string()
 };
 
