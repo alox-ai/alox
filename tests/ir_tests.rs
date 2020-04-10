@@ -428,3 +428,60 @@ fun @test() -> Int32:
     %0 : ComptimeInt = 2
     ret %0");
 }
+
+#[test]
+pub fn order_independent_declaration() {
+    check_ir("order_independent_declaration", "\
+fun zeroth(): Bool {
+    return false
+}
+
+fun first(): Int32 {
+    return 1
+}
+
+fun second(): Int32 {
+    let x = zeroth()
+    if x {
+        return first()
+    } else {
+        return third()
+    }
+}
+
+fun third(): Int32 {
+    return 2
+}", "\
+; Module: test::order_independent_declaration
+fun @zeroth() -> Bool:
+  block#0:
+    %0 : Bool = false
+    ret %0
+fun @first() -> Int32:
+  block#0:
+    %0 : ComptimeInt = 1
+    ret %0
+fun @second() -> Int32:
+  block#0:
+    %0 : Bool = @test::order_independent_declaration::zeroth
+    %1 : Bool = %0()
+    %x : Pointer[Bool] = alloca Bool
+    store %1 in %x
+    %4 : Bool = load %x
+    branch %4 block#1 block#2
+  block#1:
+    %0 : Int32 = @test::order_independent_declaration::first
+    %1 : Int32 = %0()
+    ret %1
+  block#2:
+    %0 : Bool = true
+    jump block#3
+  block#3:
+    %0 : Int32 = @test::order_independent_declaration::third
+    %1 : Int32 = %0()
+    ret %1
+fun @third() -> Int32:
+  block#0:
+    %0 : ComptimeInt = 2
+    ret %0");
+}

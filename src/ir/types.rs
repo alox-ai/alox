@@ -124,3 +124,12 @@ pub struct GenericType {
     pub name: String,
     pub arguments: Vec<Box<Type>>,
 }
+
+impl GenericType {
+    pub fn wrap(name: String, arg: Box<Type>) -> Box<Type> {
+        Box::new(Type::GenericType(GenericType {
+            name,
+            arguments: vec![arg],
+        }))
+    }
+}

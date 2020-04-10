@@ -239,27 +239,12 @@ impl ir::Compiler {
                         exp,
                     );
 
-
-                    let typ = if let Some(type_name) = &d.type_name {
-                        let declaration_id = ir::DeclarationId::from_type_name(type_name);
-                        if let Some(declaration) = self.resolve(&declaration_id) {
-                            Some(declaration.get_type(self))
-                        } else {
-                            None
-                        }
-                    } else {
-                        let typ = current_block.get_instruction(expr_ins).get_type(self, current_block);
-                        Some(typ)
-                    };
-
-                    if let Some(typ) = typ {
-                        let alloca = ir::Instruction::Alloca(Box::new(ir::Alloca {
-                            name: d.name.clone(),
-                            typ: typ.clone(),
-                        }));
-                        lvt.set(d.name.clone(), typ);
-                        block_builder.add_instruction(alloca);
-                    }
+                    let alloca = ir::Instruction::Alloca(Box::new(ir::Alloca {
+                        name: d.name.clone(),
+                        reference_ins: expr_ins,
+                    }));
+                    lvt.set(d.name.clone(), expr_ins);
+                    block_builder.add_instruction(alloca);
 
                     let store = ir::Instruction::Store(Box::new(ir::Store {
                         name: d.name.clone(),
@@ -453,13 +438,13 @@ impl ir::Compiler {
                     ))
                 } else {
                     // assume the symbol is in the module
-                    let result: Option<Either<Box<Type>, ir::Instruction>> = lvt.get(name.clone());
+                    let result: Option<Either<ir::InstructionId, ir::Instruction>> = lvt.get(name.clone());
                     if let Some(result) = result {
                         match result {
-                            Either::Left(typ) => {
+                            Either::Left(reference_ins) => {
                                 // return early if this instruction is already in the block
                                 // return reference;
-                                let load = ir::Instruction::Load(Box::new(ir::Load { name , typ }));
+                                let load = ir::Instruction::Load(Box::new(ir::Load { name, reference_ins }));
                                 load
                             }
                             Either::Right(generated) => {
@@ -548,7 +533,7 @@ impl BlockBuilder {
 
 #[derive(Debug)]
 pub struct LocalVariableTable {
-    table: Vec<HashMap<String, Box<Type>>>,
+    table: Vec<HashMap<String, ir::InstructionId>>,
     parameters: Vec<String>,
 }
 
@@ -571,10 +556,10 @@ impl LocalVariableTable {
         self.table.pop();
     }
 
-    pub fn get(&self, name: String) -> Option<Either<Box<Type>, ir::Instruction>> {
+    pub fn get(&self, name: String) -> Option<Either<ir::InstructionId, ir::Instruction>> {
         for x in self.table.iter().rev() {
             if let Some(instruction) = x.get(&name) {
-                return Some(Either::Left(instruction.clone()));
+                return Some(Either::Left(*instruction));
             }
         }
         // check parameters
@@ -588,9 +573,9 @@ impl LocalVariableTable {
         None
     }
 
-    pub fn set(&mut self, name: String, typ: Box<Type>) {
+    pub fn set(&mut self, name: String, ins: ir::InstructionId) {
         if let Some(map) = self.table.last_mut() {
-            map.insert(name, typ);
+            map.insert(name, ins);
         }
     }
 }

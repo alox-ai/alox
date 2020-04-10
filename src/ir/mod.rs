@@ -5,6 +5,7 @@ use crate::ast;
 use crate::ir::types::{PrimitiveType, Type};
 use crate::util::Either;
 use std::collections::HashMap;
+use std::alloc::alloc;
 
 pub mod convert;
 pub mod debug;
@@ -452,10 +453,11 @@ impl Instruction {
                 }
             }
             Instruction::Alloca(alloca) => {
-                Box::new(types::Type::GenericType(types::GenericType { name: "Pointer".to_string(), arguments: vec![alloca.typ.clone()] }))
+                let inner_type = block.get_instruction(alloca.reference_ins).get_type(compiler, block);
+                types::GenericType::wrap("Pointer".into(), inner_type)
             }
             Instruction::Load(load) => {
-                load.typ.clone()
+                block.get_instruction(load.reference_ins).get_type(compiler, block)
             }
             Instruction::Return(_)
             | Instruction::Unreachable(_)
@@ -513,7 +515,7 @@ pub struct InstructionId(pub usize);
 #[derive(Clone, Debug)]
 pub struct Load {
     pub name: String,
-    pub typ: Box<Type>,
+    pub reference_ins: InstructionId,
 }
 
 #[derive(Clone, Debug)]
@@ -525,7 +527,7 @@ pub struct Store {
 #[derive(Clone, Debug)]
 pub struct Alloca {
     pub name: String,
-    pub typ: Box<Type>,
+    pub reference_ins: InstructionId,
 }
 
 #[derive(Clone, Debug)]

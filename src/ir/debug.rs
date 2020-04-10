@@ -240,7 +240,8 @@ impl Printer {
                 self.print(format!("store %{} in %{}", store.value.0, store.name))
             }
             Instruction::Alloca(ref alloca) => {
-                self.print(format!("%{} : {} = alloca {}", alloca.name, ins_type, alloca.typ.name()))
+                let inner_type = block.get_instruction(alloca.reference_ins).get_type(compiler, block);
+                self.print(format!("%{} : {} = alloca {}", alloca.name, ins_type, inner_type.name()))
             }
             ref i => self.print(format!("%{} : {} = unprintable ({:?})", id, ins_type, i)),
         }
