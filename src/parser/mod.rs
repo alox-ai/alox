@@ -10,7 +10,7 @@ use crate::diagnostic::*;
 lalrpop_mod!(#[allow(clippy::all)] #[allow(warnings)] #[allow(unknown_lints)] pub grammar, "/parser/grammar.rs");
 
 pub struct Parser {
-    diagnostics: DiagnosticManager,
+    pub diagnostics: DiagnosticManager,
 }
 
 impl Parser {
@@ -95,10 +95,6 @@ impl Parser {
                 None
             }
         };
-    }
-
-    pub fn emit_errors(&self) {
-        self.diagnostics.emit_errors();
     }
 }
 

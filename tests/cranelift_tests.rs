@@ -15,7 +15,7 @@ pub fn check_ir(test_name: &str, code: &str, expected_ir: &str) {
     let mut module = compiler.generate_ir(match parsed_program {
         Some(program) => program,
         None => {
-            parser.emit_errors();
+            parser.diagnostics.emit_errors();
             panic!("expected ast");
         }
     });
@@ -43,7 +43,7 @@ pub fn check_ir(test_name: &str, code: &str, expected_ir: &str) {
     println!("{}", expected_ir);
     println!("=========== Actual ===========");
     println!("{}", actual_ir);
-    println!("==========");
+    println!("==============================");
     assert_eq!(actual_ir, expected_ir);
 }
 

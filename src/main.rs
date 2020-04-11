@@ -29,7 +29,7 @@ pub mod util;
 fn main() {
     let test_file = "test.alox";
     let test_source = "\
-    fun test(a: Int32, b: Int32): Int32 {
+    fun test(a: Int32, b: fun Int32): Int32 {
         var x = 1
         if false {
             return 1
@@ -38,7 +38,8 @@ fn main() {
     }".to_string();
     let mut parser = parser::Parser::new();
     let parsed_program = parser.parse(ast::Path::of("test"), test_file.to_string(), test_source);
-    parser.emit_errors();
+    parser.diagnostics.emit_errors();
+    println!("{}", parser.diagnostics.emit_to_string());
     if let Some(program) = parsed_program {
         let compiler = Compiler::new();
         let module = compiler.generate_ir(program);

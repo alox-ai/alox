@@ -4,14 +4,13 @@ use alox::ast::Path;
 use alox::parser::Parser;
 
 pub fn check_ast(test_name: &str, module: &str, expected_ast: &str) {
-    // parse the module and compiler it to ir
     let mut parser = Parser::new();
     let parsed_program = parser.parse(Path::of("test"), test_name.to_string(), module.to_string());
 
     let ast = if let Some(program) = parsed_program {
         format!("{:#?}", program)
     } else {
-        parser.emit_errors();
+        parser.diagnostics.emit_errors();
         panic!("expected ast to exist");
     };
 
@@ -26,6 +25,33 @@ pub fn check_ast(test_name: &str, module: &str, expected_ast: &str) {
     println!("{}", ast);
     println!("==========");
     assert_eq!(ast, expected_ast);
+}
+
+pub fn check_error(test_name: &str, module: &str, expected_errors: &str) {
+    let mut parser = Parser::new();
+    let parsed_program = parser.parse(Path::of("test"), test_name.to_string(), module.to_string());
+
+    let mut errors = if let Some(program) = parsed_program {
+        panic!("expected parser to fail");
+    } else {
+        parser.diagnostics.emit_to_string()
+    };
+
+    let mut expected_errors = expected_errors.to_string();
+    while expected_errors.ends_with('\n') {
+        expected_errors.pop();
+    }
+
+    while errors.ends_with('\n') {
+        errors.pop();
+    }
+
+    println!("========== Expected ==========");
+    println!("{}", expected_errors);
+    println!("=========== Actual ===========");
+    println!("{}", errors);
+    println!("==============================");
+    assert_eq!(errors, expected_errors);
 }
 
 #[test]
@@ -351,4 +377,12 @@ fun test(a: Int32): Int32 {
         ),
     ],
 }"#);
+}
+
+#[test]
+pub fn error_function_arg() {
+    check_error("error_function_arg", "\
+fun test(a: %Int32): Int32 {
+    return 1
+}", "error_function_arg:1:13: error: encountered invalid token while parsing");
 }
