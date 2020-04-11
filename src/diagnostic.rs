@@ -4,7 +4,7 @@ use std::io::Error;
 use codespan_reporting::diagnostic::{Diagnostic, Severity};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term::{Chars, Config, DisplayStyle, Styles};
-use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use codespan_reporting::term::termcolor::{Buffer, ColorChoice, StandardStream};
 
 pub type FileId = usize;
 
@@ -72,11 +72,11 @@ impl DiagnosticManager {
             styles: Styles::default(),
             chars: ASCII_CHARS,
         };
-        let mut writer = StringBuf::default();
+        let mut writer = Buffer::no_color();
         for message in self.messages.iter() {
             codespan_reporting::term::emit(&mut writer, &config, &self.files, message).unwrap()
         }
-        writer.buffer
+        String::from_utf8_lossy(writer.as_slice()).to_string()
     }
 
     pub fn emit_errors(&self) {
@@ -85,42 +85,5 @@ impl DiagnosticManager {
         for message in self.messages.iter() {
             codespan_reporting::term::emit(&mut writer.lock(), &config, &self.files, message).unwrap()
         }
-    }
-}
-
-// This is a big workaround for codespan only writing to a termcolor WriteColor.
-
-struct StringBuf {
-    buffer: String,
-}
-
-impl Default for StringBuf {
-    fn default() -> Self {
-        Self { buffer: String::new() }
-    }
-}
-
-impl std::io::Write for StringBuf {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        for b in buf {
-            self.buffer.push(*b as char);
-        }
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
-}
-
-impl codespan_reporting::term::termcolor::WriteColor for StringBuf {
-    fn supports_color(&self) -> bool {
-        false
-    }
-
-    fn set_color(&mut self, _: &codespan_reporting::term::termcolor::ColorSpec) -> std::io::Result<()> {
-        Ok(())
-    }
-
-    fn reset(&mut self) -> std::io::Result<()> {
-        Ok(())
     }
 }
