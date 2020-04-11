@@ -1,4 +1,5 @@
 pub mod cranelift;
+pub mod llvm;
 
 pub enum Backend {
     CraneLift,

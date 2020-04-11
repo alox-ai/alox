@@ -1,5 +1,6 @@
 use core::fmt::{Formatter, Result};
 use std::fmt::Debug;
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone)]
 pub enum Type {
@@ -8,6 +9,20 @@ pub enum Type {
     Function(FunctionType),
     Primitive(PrimitiveType),
     GenericType(GenericType),
+}
+
+impl Eq for Type {}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        self.name().eq(&other.name())
+    }
+}
+
+impl Hash for Type {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name().hash(state);
+    }
 }
 
 impl Type {

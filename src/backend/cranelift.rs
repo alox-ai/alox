@@ -51,6 +51,15 @@ impl CraneLiftBackend {
     pub fn convert_type(&self, typ: Box<crate::ir::types::Type>) -> Option<Type> {
         match *typ {
             Primitive(p) => self.convert_primitive_type(p),
+            // GenericType(g) => {
+            //     match g.name.as_str() {
+            //         "Pointer" => {
+            //             let inner_type = g.arguments.first().unwrap();
+            //
+            //         }
+            //         _ => { panic!(format!("can't convert generic type for CL IR: {:#?}", g)) }
+            //     }
+            // }
             t => { panic!(format!("can't convert type for CL IR: {:#?}", t)); /* TODO */ }
         }
     }

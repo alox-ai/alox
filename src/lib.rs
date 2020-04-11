@@ -8,6 +8,7 @@ extern crate cuda;
 extern crate lalrpop_util;
 #[macro_use]
 extern crate lazy_static;
+extern crate llvm_sys;
 extern crate rspirv;
 extern crate spirv_headers as spirv;
 
