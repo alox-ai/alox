@@ -22,7 +22,7 @@ impl CraneLiftBackend {
         CraneLiftBackend {}
     }
 
-    pub fn convert_primitive_type(&self, primitive: PrimitiveType) -> Option<Type> {
+    pub fn convert_primitive_type(&self, primitive: &PrimitiveType) -> Option<Type> {
         match primitive {
             PrimitiveType::Bool => Some(B8),
             PrimitiveType::Int(i) => {
@@ -48,8 +48,8 @@ impl CraneLiftBackend {
         }
     }
 
-    pub fn convert_type(&self, typ: Box<crate::ir::types::Type>) -> Option<Type> {
-        match *typ {
+    pub fn convert_type(&self, typ: &crate::ir::types::Type) -> Option<Type> {
+        match typ {
             Primitive(p) => self.convert_primitive_type(p),
             // GenericType(g) => {
             //     match g.name.as_str() {
@@ -79,34 +79,16 @@ impl CraneLiftBackend {
         &self,
         compiler: &Compiler,
         dec: &Declaration,
-        context: Option<Either<&Box<ir::Struct>, &Box<ir::Actor>>>,
+        context: Option<&ir::Struct>,
     ) -> String {
         match dec {
             Declaration::Function(ref function) => {
-                self.convert_function(compiler, Either::Left(function), context).display(None).to_string()
-            }
-            Declaration::Behaviour(ref behaviour) => {
-                self.convert_function(compiler, Either::Right(behaviour), context).display(None).to_string()
+                self.convert_function(compiler, function.as_ref(), context).display(None).to_string()
             }
             Declaration::Struct(ref struc) => {
                 let mut buffer = String::new();
                 for dec in struc.functions.iter() {
-                    let dec = self.convert_declaration(compiler, dec, Some(Either::Left(struc)));
-                    buffer.push_str(&dec);
-                    buffer.push('\n');
-                }
-                buffer
-            }
-            Declaration::Actor(ref actor) => {
-                let mut buffer = String::new();
-                for dec in actor.functions.iter() {
-                    let dec = self.convert_declaration(compiler, dec, Some(Either::Right(actor)));
-                    buffer.push_str(&dec);
-                    buffer.push('\n');
-                }
-
-                for dec in actor.behaviours.iter() {
-                    let dec = self.convert_declaration(compiler, dec, Some(Either::Right(actor)));
+                    let dec = self.convert_declaration(compiler, dec, Some(struc.as_ref()));
                     buffer.push_str(&dec);
                     buffer.push('\n');
                 }
@@ -119,59 +101,38 @@ impl CraneLiftBackend {
     fn convert_function(
         &self,
         compiler: &Compiler,
-        function: Either<&Box<ir::Function>, &Box<ir::Behaviour>>,
-        context: Option<Either<&Box<ir::Struct>, &Box<ir::Actor>>>,
+        function: &ir::Function,
+        context: Option<&ir::Struct>,
     ) -> CLFunction {
         let mut sig = Signature::new(CallConv::SystemV);
         // convert return type
-        if let Either::Left(function) = function {
-            if let Some(typ) = self.convert_type(function.return_type.get_type(compiler)) {
-                sig.returns.push(AbiParam::new(typ));
-            }
+        if let Some(typ) = self.convert_type(function.return_type.get_type(compiler).as_ref()) {
+            sig.returns.push(AbiParam::new(typ));
         }
 
         // convert args
-        let args = match function {
-            Either::Left(function) => &function.arguments,
-            Either::Right(behaviour) => &behaviour.arguments,
-        };
-
-        for (_name, arg) in args {
-            if let Some(typ) = self.convert_type(arg.get_type(compiler)) {
+        for (_name, arg) in &function.arguments {
+            if let Some(typ) = self.convert_type(arg.get_type(compiler).as_ref()) {
                 sig.params.push(AbiParam::new(typ));
             }
         }
 
         // build name from context
         let name = if let Some(context) = context {
-            let mut name = match context {
-                Either::Left(struc) => struc.name.clone(),
-                Either::Right(actor) => actor.name.clone(),
-            };
+            let mut name = context.name.clone();
             name.push('_');
-            let n = match function {
-                Either::Left(function) => &function.name,
-                Either::Right(behaviour) => &behaviour.name,
-            };
-            name.push_str(n);
+            name.push_str(&function.name);
             name
         } else {
-            match function {
-                Either::Left(function) => function.name.clone(),
-                Either::Right(behaviour) => behaviour.name.clone(),
-            }
+            function.name.clone()
         };
 
         let mut func = CLFunction::with_name_signature(ExternalName::testcase(name), sig);
-        let blocks = match function {
-            Either::Left(function) => &function.blocks,
-            Either::Right(behaviour) => &behaviour.blocks,
-        };
-        self.convert_blocks(compiler, &mut func, blocks);
+        self.convert_blocks(compiler, &mut func, function.blocks.as_slice());
         func
     }
 
-    fn convert_blocks(&self, compiler: &Compiler, mut func: &mut CLFunction, blocks: &Vec<Block>) {
+    fn convert_blocks(&self, compiler: &Compiler, mut func: &mut CLFunction, blocks: &[Block]) {
         let mut fn_builder_ctx = FunctionBuilderContext::new();
         let mut builder = FunctionBuilder::new(&mut func, &mut fn_builder_ctx);
 
@@ -188,12 +149,12 @@ impl CraneLiftBackend {
             for (instruction_id, instruction) in block.instructions.iter().enumerate() {
                 match *instruction {
                     Instruction::IntegerLiteral(ref i) => {
-                        let typ = self.convert_type(instruction.get_type(compiler, block)).expect("int literal should be an int type");
+                        let typ = self.convert_type(instruction.get_type(compiler, block).as_ref()).expect("int literal should be an int type");
                         let value: Value = builder.ins().iconst(typ, i.0);
                         value_map.insert(instruction_id, value);
                     }
                     Instruction::BooleanLiteral(ref b) => {
-                        let typ = self.convert_type(instruction.get_type(compiler, block)).expect("int literal should be an int type");
+                        let typ = self.convert_type(instruction.get_type(compiler, block).as_ref()).expect("int literal should be an int type");
                         let value: Value = builder.ins().bconst(typ, b.0);
                         value_map.insert(instruction_id, value);
                     }
@@ -219,7 +180,7 @@ impl CraneLiftBackend {
                         // ref of the value we're going to return
                         let ret_value_id = ret.instruction.0;
                         if let Some(value) = value_map.get(&ret_value_id) {
-                            builder.ins().return_(&[value.clone()]);
+                            builder.ins().return_(&[*value]);
                         }
                     }
                     _ => { /*TODO*/ }

@@ -15,57 +15,27 @@ Import: Path = {
 // NODES
 
 Node: Node = {
-    <actor:Actor> => Node::Actor(Box::new(actor)),
     <struc:Struct> => Node::Struct(Box::new(struc)),
     <function:Function> => Node::Function(Box::new(function)),
     <variable_declaration:VariableDeclaration> => Node::VariableDeclaration(Box::new(variable_declaration)),
     ! => { errors.push(<>); Node::Error },
 };
 
-Actor: Actor = {
-    "actor" <name:Name> "{" <declarations:ActorBodyParts> "}" => Actor {
-        name: name,
-        fields: declarations.0,
-        functions: declarations.1,
-        behaviours: declarations.2,
-    }
-};
-
-ActorBodyParts: (Vec<VariableDeclaration>, Vec<Function>, Vec<Behaviour>) = {
-    <parts:ActorBodyPart*> => {
-        let mut fields = vec![];
-        let mut functions = vec![];
-        let mut behaviours = vec![];
-
-        for (field, function, behaviour) in parts {
-            if let Some(field) = field {
-                fields.push(field);
-            }
-            if let Some(function) = function {
-                functions.push(function);
-            }
-            if let Some(behaviour) = behaviour {
-                behaviours.push(behaviour);
-            }
-        }
-
-        (fields, functions, behaviours)
-    }
-};
-
-ActorBodyPart: (Option<VariableDeclaration>, Option<Function>, Option<Behaviour>) = {
-    <VariableDeclaration> => (Some(<>), None, None),
-    <Function> => (None, Some(<>), None),
-    <Behaviour> => (None, None, Some(<>)),
-};
-
 Struct: Struct = {
     "struct" <name:Name> "{" <declarations:StructBodyParts> "}" => Struct {
+        kind: StructKind::Struct,
         name: name,
         traits: vec![],
         fields: declarations.0,
         functions: declarations.1,
-    }
+    },
+    "actor" <name:Name> "{" <declarations:StructBodyParts> "}" => Struct {
+        kind: StructKind::Actor,
+        name: name,
+        traits: vec![],
+        fields: declarations.0,
+        functions: declarations.1,
+    },
 };
 
 StructBodyParts: (Vec<VariableDeclaration>, Vec<Function>) = {
@@ -98,20 +68,26 @@ Function: Function = {
             None => TypeName {path:Path(vec![]), name: "Void".to_string(), arguments: vec![]},
         };
         Function {
+            kind: FunctionKind::Function,
             name: name,
             arguments: args,
             return_type: r,
             statements: statements,
         }
-    }
-};
-
-Behaviour: Behaviour = {
-    "behave" <name:Name> "(" <args:Comma<NameWithType>> ")" "{" <statements:Statement*> "}" => Behaviour {
-        name: name,
-        arguments: args,
-        statements: statements,
-    }
+    },
+    "behave" <name:Name> "(" <args:Comma<NameWithType>> ")" <return_type:(":" <TypeName>)?> "{" <statements:Statement*> "}" => {
+        let r = match return_type {
+            Some(t) => t,
+            None => TypeName {path:Path(vec![]), name: "Void".to_string(), arguments: vec![]},
+        };
+        Function {
+            kind: FunctionKind::Behaviour,
+            name: name,
+            arguments: args,
+            return_type: r,
+            statements: statements,
+        }
+    },
 };
 
 // STATEMENTS

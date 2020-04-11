@@ -12,18 +12,6 @@ pub trait Pass {
             Declaration::Function(ref mut function) => {
                 self.pass_blocks(&mut function.blocks);
             }
-            Declaration::Behaviour(ref mut behaviour) => {
-                self.pass_blocks(&mut behaviour.blocks);
-            }
-            Declaration::Actor(ref mut actor) => {
-                for function in actor.functions.iter_mut() {
-                    self.pass_declaration(function);
-                }
-
-                for behaviour in actor.behaviours.iter_mut() {
-                    self.pass_declaration(behaviour);
-                }
-            }
             Declaration::Struct(ref mut struc) => {
                 for function in struc.functions.iter_mut() {
                     self.pass_declaration(function);

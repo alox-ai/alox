@@ -14,6 +14,7 @@ use llvm_sys::target_machine::*;
 use crate::ir::*;
 use crate::ir::types::*;
 use std::ops::Deref;
+use std::ptr;
 
 pub struct LLVMBackend<'compiler> {
     compiler: &'compiler Compiler,
@@ -39,8 +40,8 @@ impl<'c> LLVMBackend<'c> {
 
             /*
             let target_triple = LLVMGetDefaultTargetTriple();
-            let mut target = 0 as *mut _;
-            let mut error = 0 as *mut _;
+            let mut target = ptr::null_mut();
+            let mut error = ptr::null_mut();
             LLVMGetTargetFromTriple(target_triple, target, error);
             LLVMDisposeErrorMessage(*error);
             let target_machine = LLVMCreateTargetMachine(*target, target_triple, cstr(""), cstr(""), LLVMCodeGenOptLevel::LLVMCodeGenLevelNone, LLVMRelocMode::LLVMRelocDefault, LLVMCodeModel::LLVMCodeModelDefault);
@@ -138,7 +139,7 @@ impl<'c> LLVMBackend<'c> {
 
     pub fn emit<S: AsRef<str>>(&mut self, path: S) {
         unsafe {
-            let error = 0 as *mut _;
+            let error = ptr::null_mut();
             let cpath = CString::new(path.as_ref()).unwrap();
             LLVMPrintModuleToFile(self.llvm_module, cpath.as_ptr(), error);
             LLVMDisposeErrorMessage(*error);

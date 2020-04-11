@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use crate::ast;
 use crate::ir;
 use crate::util::Either;
-use crate::ir::types::Type;
 
 impl ir::Compiler {
     pub fn generate_ir(&self, program: ast::Program) -> ir::Module {
@@ -17,52 +16,6 @@ impl ir::Compiler {
         for node in program.nodes {
             match node {
                 ast::Node::Error => unreachable!("error parsing ast node"),
-                ast::Node::Actor(a) => {
-                    let mut fields = Vec::with_capacity(a.fields.len());
-                    let mut functions = Vec::with_capacity(a.functions.len());
-                    let mut behaviours = Vec::with_capacity(a.behaviours.len());
-
-                    for field in a.fields {
-                        let declaration = if let Some(type_path) = field.type_name {
-                            ir::DeclarationId::from_type_name(&type_path)
-                        } else {
-                            // TODO better errors
-                            panic!("No type on field")
-                        };
-                        let variable = ir::Declaration::Variable(Box::new(ir::Variable {
-                            mutable: field.mutable,
-                            name: field.name,
-                            typ: declaration,
-                        }));
-                        fields.push(variable);
-                    }
-
-                    for f in a.functions {
-                        let function = self.generate_ir_function(
-                            current_path,
-                            &completed_declarations,
-                            &f,
-                        );
-                        functions.push(function);
-                    }
-
-                    for b in a.behaviours {
-                        let behaviour = self.generate_ir_behaviour(
-                            current_path,
-                            &completed_declarations,
-                            &b,
-                        );
-                        behaviours.push(behaviour);
-                    }
-
-                    let actor = ir::Actor {
-                        name: a.name,
-                        fields,
-                        behaviours,
-                        functions,
-                    };
-                    completed_declarations.push(ir::Declaration::Actor(Box::new(actor)));
-                }
                 ast::Node::Struct(s) => {
                     let mut fields = Vec::with_capacity(s.fields.len());
                     let traits = Vec::with_capacity(s.traits.len());
@@ -93,6 +46,7 @@ impl ir::Compiler {
                     }
 
                     let strct = ir::Struct {
+                        kind: s.kind.into(),
                         name: s.name,
                         fields,
                         traits,
@@ -118,56 +72,6 @@ impl ir::Compiler {
             name,
             declarations: completed_declarations,
         }
-    }
-
-    pub fn generate_ir_behaviour(
-        &self,
-        current_path: &ast::Path,
-        declarations: &Vec<ir::Declaration>,
-        b: &ast::Behaviour,
-    ) -> ir::Declaration {
-        let name = b.name.clone();
-
-        // get the parameters from the function header
-        let mut param_names = vec![];
-        for (name, _dec) in &b.arguments {
-            param_names.push(name.clone());
-        }
-
-        let mut block_builder = BlockBuilder::new();
-        let lvt = &mut LocalVariableTable::new_with_params(param_names);
-
-        {
-            let block_builder = &mut block_builder;
-            for statement in b.statements.iter() {
-                self.generate_ir_statement(
-                    current_path,
-                    declarations,
-                    lvt,
-                    block_builder,
-                    statement,
-                );
-            }
-        }
-
-        let mut blocks = Vec::with_capacity(block_builder.blocks.len());
-        for block in block_builder.blocks {
-            if block.instructions.len() > 0 {
-                blocks.push(block.clone());
-            }
-        }
-
-        let mut arguments = Vec::with_capacity(b.arguments.len());
-        for (name, type_path) in b.arguments.iter() {
-            let declaration_id = ir::DeclarationId::from_type_name(type_path);
-            arguments.push((name.clone(), declaration_id));
-        }
-
-        ir::Declaration::Behaviour(Box::new(ir::Behaviour {
-            name,
-            arguments,
-            blocks,
-        }))
     }
 
     pub fn generate_ir_function(
@@ -210,6 +114,7 @@ impl ir::Compiler {
         let return_type = ir::DeclarationId::from_type_name(&f.return_type);
 
         ir::Declaration::Function(Box::new(ir::Function {
+            kind: f.kind.into(),
             name,
             arguments,
             return_type,

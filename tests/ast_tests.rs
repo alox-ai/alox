@@ -44,6 +44,7 @@ fun test(a: Int32): Int32 {
     nodes: [
         Function(
             Function {
+                kind: Function,
                 name: "test",
                 arguments: [
                     (
@@ -103,6 +104,7 @@ fun bar(a: Int32): Int32 {
     nodes: [
         Function(
             Function {
+                kind: Function,
                 name: "foo",
                 arguments: [
                     (
@@ -166,6 +168,7 @@ fun bar(a: Int32): Int32 {
         ),
         Function(
             Function {
+                kind: Function,
                 name: "bar",
                 arguments: [
                     (
@@ -240,6 +243,7 @@ fun test(a: Int32): Int32 {
     nodes: [
         Function(
             Function {
+                kind: Function,
                 name: "test",
                 arguments: [
                     (

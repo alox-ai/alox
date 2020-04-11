@@ -3,9 +3,7 @@ use std::sync::RwLock;
 
 use crate::ast;
 use crate::ir::types::{PrimitiveType, Type};
-use crate::util::Either;
 use std::collections::HashMap;
-use std::alloc::alloc;
 
 pub mod convert;
 pub mod debug;
@@ -200,9 +198,7 @@ pub enum DeclarationKind {
 
 #[derive(Clone, Debug)]
 pub enum Declaration {
-    Behaviour(Box<Behaviour>),
     Function(Box<Function>),
-    Actor(Box<Actor>),
     Struct(Box<Struct>),
     Trait(Box<Trait>),
     Variable(Box<Variable>),
@@ -212,9 +208,7 @@ pub enum Declaration {
 impl Declaration {
     pub fn name(&self) -> String {
         match self {
-            Declaration::Behaviour(b) => b.name.clone(),
             Declaration::Function(f) => f.name.clone(),
-            Declaration::Actor(a) => a.name.clone(),
             Declaration::Struct(s) => s.name.clone(),
             Declaration::Trait(t) => t.name.clone(),
             Declaration::Variable(v) => v.name.clone(),
@@ -224,9 +218,7 @@ impl Declaration {
 
     pub fn declaration_kind(&self) -> DeclarationKind {
         match self {
-            Declaration::Behaviour(_) => DeclarationKind::Behaviour,
             Declaration::Function(_) => DeclarationKind::Function,
-            Declaration::Actor(_) => DeclarationKind::Actor,
             Declaration::Struct(_) => DeclarationKind::Struct,
             Declaration::Trait(_) => DeclarationKind::Trait,
             Declaration::Variable(_) => DeclarationKind::Variable,
@@ -282,19 +274,33 @@ impl Declaration {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Actor {
-    pub name: String,
-    // Declaration::Variable
-    pub fields: Vec<Declaration>,
-    // Declaration::Function
-    pub functions: Vec<Declaration>,
-    // Declaration::Behaviour
-    pub behaviours: Vec<Declaration>,
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum StructKind {
+    Struct,
+    Actor,
+}
+
+impl StructKind {
+    pub fn name(&self) -> &str {
+        match self {
+            StructKind::Struct => "struct",
+            StructKind::Actor => "actor",
+        }
+    }
+}
+
+impl From<ast::StructKind> for StructKind {
+    fn from(other: ast::StructKind) -> Self {
+        match other {
+            ast::StructKind::Struct => StructKind::Struct,
+            ast::StructKind::Actor => StructKind::Actor,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Struct {
+    pub kind: StructKind,
     pub name: String,
     // Declaration::Variable
     pub fields: Vec<Declaration>,
@@ -341,8 +347,36 @@ impl Display for Permission {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum FunctionKind {
+    Function,
+    Behaviour,
+    Kernel,
+}
+
+impl FunctionKind {
+    pub fn name(&self) -> &str {
+        match self {
+            FunctionKind::Function => "fun",
+            FunctionKind::Behaviour => "behave",
+            FunctionKind::Kernel => "kernel",
+        }
+    }
+}
+
+impl From<ast::FunctionKind> for FunctionKind {
+    fn from(other: ast::FunctionKind) -> Self {
+        match other {
+            ast::FunctionKind::Function => FunctionKind::Function,
+            ast::FunctionKind::Behaviour => FunctionKind::Behaviour,
+            ast::FunctionKind::Kernel => FunctionKind::Kernel,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Function {
+    pub kind: FunctionKind,
     pub name: String,
     pub arguments: Vec<(String, DeclarationId)>,
     pub return_type: DeclarationId,
@@ -360,13 +394,18 @@ impl Function {
         let result = self.return_type.get_type(compiler);
         Box::new(types::Type::Function(types::FunctionType { arguments, result }))
     }
-}
 
-#[derive(Clone, Debug)]
-pub struct Behaviour {
-    pub name: String,
-    pub arguments: Vec<(String, DeclarationId)>,
-    pub blocks: Vec<Block>,
+    pub fn is_function(&self) -> bool {
+        self.kind == FunctionKind::Function
+    }
+
+    pub fn is_behaviour(&self) -> bool {
+        self.kind == FunctionKind::Behaviour
+    }
+
+    pub fn is_kernel(&self) -> bool {
+        self.kind == FunctionKind::Kernel
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -469,36 +508,18 @@ impl Instruction {
 
     /// Get type of an instruction in the context of a function or behaviour.
     /// Useful for getting the type of parameters.
-    pub fn get_type_with_context(&self, compiler: &Compiler, block: &Block, context: Either<&Box<Function>, &Box<Behaviour>>) -> Box<Type> {
-        match self {
-            Instruction::GetParameter(g) => {
-                let name = &g.name;
-                match context {
-                    Either::Left(f) => {
-                        for (arg_name, declaration) in &f.arguments {
-                            if arg_name == name {
-                                return if let Some(declaration) = compiler.resolve(declaration) {
-                                    declaration.get_type(compiler)
-                                } else {
-                                    declaration.get_type(compiler)
-                                };
-                            }
-                        }
-                    }
-                    Either::Right(b) => {
-                        for (arg_name, declaration) in &b.arguments {
-                            if arg_name == name {
-                                return if let Some(declaration) = compiler.resolve(declaration) {
-                                    declaration.get_type(compiler)
-                                } else {
-                                    declaration.get_type(compiler)
-                                };
-                            }
-                        }
-                    }
+    pub fn get_type_with_context(&self, compiler: &Compiler, block: &Block, context: &Function) -> Box<Type> {
+        if let Instruction::GetParameter(g) = self {
+            let name = &g.name;
+            for (arg_name, declaration) in &context.arguments {
+                if arg_name == name {
+                    return if let Some(declaration) = compiler.resolve(declaration) {
+                        declaration.get_type(compiler)
+                    } else {
+                        declaration.get_type(compiler)
+                    };
                 }
             }
-            _ => {}
         }
         self.get_type(compiler, block)
     }

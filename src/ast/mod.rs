@@ -31,7 +31,6 @@ pub struct Program {
 
 #[derive(Clone, Debug)]
 pub enum Node {
-    Actor(Box<Actor>),
     Struct(Box<Struct>),
     Trait(Box<Trait>),
     Function(Box<Function>),
@@ -78,20 +77,19 @@ pub struct Trait {
     pub function_declarations: Vec<Function>,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum StructKind {
+    Struct,
+    Actor,
+}
+
 #[derive(Clone, Debug)]
 pub struct Struct {
+    pub kind: StructKind,
     pub name: String,
     pub traits: Vec<String>,
     pub fields: Vec<VariableDeclaration>,
     pub functions: Vec<Function>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Actor {
-    pub name: String,
-    pub fields: Vec<VariableDeclaration>,
-    pub functions: Vec<Function>,
-    pub behaviours: Vec<Behaviour>,
 }
 
 #[derive(Clone, Debug)]
@@ -125,18 +123,19 @@ impl From<(Path, String)> for TypeName {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Function {
-    pub name: String,
-    pub arguments: Vec<(String, TypeName)>,
-    pub return_type: TypeName,
-    pub statements: Vec<Statement>,
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum FunctionKind {
+    Function,
+    Behaviour,
+    Kernel,
 }
 
 #[derive(Clone, Debug)]
-pub struct Behaviour {
+pub struct Function {
+    pub kind: FunctionKind,
     pub name: String,
     pub arguments: Vec<(String, TypeName)>,
+    pub return_type: TypeName,
     pub statements: Vec<Statement>,
 }
 
