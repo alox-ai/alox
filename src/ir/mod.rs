@@ -185,17 +185,6 @@ impl Module {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialOrd, PartialEq, Hash)]
-pub enum DeclarationKind {
-    Behaviour,
-    Function,
-    Actor,
-    Struct,
-    Trait,
-    Variable,
-    Type,
-}
-
 #[derive(Clone, Debug)]
 pub enum Declaration {
     Function(Box<Function>),
@@ -212,35 +201,8 @@ impl Declaration {
             Declaration::Struct(s) => s.name.clone(),
             Declaration::Trait(t) => t.name.clone(),
             Declaration::Variable(v) => v.name.clone(),
-            Declaration::Type(t) => t.name().clone(),
+            Declaration::Type(t) => t.name(),
         }
-    }
-
-    pub fn declaration_kind(&self) -> DeclarationKind {
-        match self {
-            Declaration::Function(_) => DeclarationKind::Function,
-            Declaration::Struct(_) => DeclarationKind::Struct,
-            Declaration::Trait(_) => DeclarationKind::Trait,
-            Declaration::Variable(_) => DeclarationKind::Variable,
-            Declaration::Type(_) => DeclarationKind::Type,
-        }
-    }
-
-    pub fn is_declaration_kind(&self, kind: DeclarationKind) -> bool {
-        let this = self.declaration_kind();
-        if this == kind {
-            return true;
-        }
-        if kind == DeclarationKind::Type
-            && (this == DeclarationKind::Struct
-            || this == DeclarationKind::Trait
-            || this == DeclarationKind::Function
-            || this == DeclarationKind::Behaviour
-            || this == DeclarationKind::Actor)
-        {
-            return true;
-        }
-        false
     }
 
     pub fn get_type(&self, compiler: &Compiler) -> Box<Type> {
@@ -250,27 +212,6 @@ impl Declaration {
             Declaration::Type(t) => t.clone(),
             _ => Box::new(types::Type::Unresolved(types::UnresolvedType::of("UnresolvedDeclaration"))),
         }
-    }
-
-    pub fn is_type(&self) -> bool {
-        let kind = self.declaration_kind();
-        kind == DeclarationKind::Type
-            || kind == DeclarationKind::Struct
-            || kind == DeclarationKind::Trait
-            || kind == DeclarationKind::Function
-    }
-
-    pub fn is_same_type(&self, declaration: &Declaration) -> bool {
-        // one of these isn't a type
-        if !self.is_type() || !declaration.is_type() {
-            return false;
-        }
-        // we're comparing different kinds of types
-        if self.declaration_kind() != declaration.declaration_kind() {
-            return false;
-        }
-        // compare the pointers
-        self as *const _ == declaration as *const _
     }
 }
 
