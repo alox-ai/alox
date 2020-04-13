@@ -28,9 +28,9 @@ const ASCII_CHARS: Chars = Chars {
 };
 
 pub struct DiagnosticManager {
-    files: SimpleFiles<String, String>,
-    file_ids: HashMap<String, FileId>,
-    messages: Vec<Diagnostic<FileId>>,
+    pub files: SimpleFiles<String, String>,
+    pub file_ids: HashMap<String, FileId>,
+    pub messages: Vec<Diagnostic<FileId>>,
 }
 
 impl DiagnosticManager {

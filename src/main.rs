@@ -14,10 +14,9 @@ extern crate rspirv;
 extern crate spirv_headers as spirv;
 
 use crate::backend::cranelift::CraneLiftBackend;
-use crate::ir::debug::PrintMode;
-use crate::ir::pass::{DeadBranchRemovalPass, Pass};
-use crate::ir::Compiler;
 use crate::backend::llvm::LLVMBackend;
+use crate::ir::Compiler;
+use crate::ir::debug::PrintMode;
 
 pub mod diagnostic;
 pub mod parser;

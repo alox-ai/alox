@@ -1,20 +1,57 @@
-use crate::ir::{Declaration, Module, Instruction, Block};
+use crate::ir::*;
+use crate::ir::pass::deadbranch::DeadBranchRemovalPass;
+use crate::ir::pass::semantics::SemanticAnalysisPass;
 
-pub trait Pass {
-    fn pass(&self, module: &mut Module) {
-        for dec in module.declarations.iter_mut() {
-            self.pass_declaration(dec);
+pub mod semantics;
+pub mod deadbranch;
+
+pub struct PassManager {
+    passes: Vec<Box<dyn Pass>>,
+}
+
+impl PassManager {
+    pub fn new() -> Self {
+        Self {
+            passes: vec![
+                Box::new(SemanticAnalysisPass),
+            ],
         }
     }
 
-    fn pass_declaration(&self, dec: &mut Declaration) {
+    pub fn optimize() -> Self {
+        Self {
+            passes: vec![
+                Box::new(DeadBranchRemovalPass),
+                Box::new(SemanticAnalysisPass),
+            ],
+        }
+    }
+
+    pub fn apply(&self, compiler: &Compiler) {
+        let mut modules = compiler.modules.write().unwrap();
+        for module in modules.iter_mut() {
+            for pass in self.passes.iter() {
+                pass.pass(compiler, module);
+            }
+        }
+    }
+}
+
+pub trait Pass {
+    fn pass(&self, compiler: &Compiler, module: &mut Module) {
+        for dec in module.declarations.iter_mut() {
+            self.pass_declaration(compiler, dec);
+        }
+    }
+
+    fn pass_declaration(&self, compiler: &Compiler, dec: &mut Declaration) {
         match *dec {
             Declaration::Function(ref mut function) => {
-                self.pass_blocks(&mut function.blocks);
+                self.pass_blocks(compiler, &mut function.blocks);
             }
             Declaration::Struct(ref mut struc) => {
                 for function in struc.functions.iter_mut() {
-                    self.pass_declaration(function);
+                    self.pass_declaration(compiler, function);
                 }
             }
             Declaration::Trait(_) => {}
@@ -22,53 +59,6 @@ pub trait Pass {
             Declaration::Type(_) => {}
         }
     }
-    fn pass_blocks(&self, blocks: &mut Vec<Block>);
-}
 
-pub struct DeadBranchRemovalPass {}
-
-impl Pass for DeadBranchRemovalPass {
-    // TODO: account for dead blocks that refer to each other
-    fn pass_blocks(&self, blocks: &mut Vec<Block>) {
-        let mut dead_blocks = vec![];
-        // go over every block
-        'blocks: for (block_id, _) in blocks.iter().enumerate() {
-            // compare every block to every other block
-            'other_blocks: for (other_block_id, other_block) in blocks.iter().enumerate() {
-                // make sure we're not comparing the same block
-                if other_block_id == block_id { continue 'other_blocks; }
-
-                // check if block is referenced in other_block
-                for instruction in other_block.instructions.iter() {
-                    match *instruction {
-                        Instruction::Jump(ref j) => {
-                            let referred_block_id = j.block.0 as usize;
-                            if block_id == referred_block_id {
-                                continue 'blocks;
-                            }
-                        }
-                        Instruction::Branch(ref b) => {
-                            let referred_true_block_id = b.true_block.0 as usize;
-                            let referred_false_block_id = b.false_block.0 as usize;
-                            if block_id == referred_true_block_id || block_id == referred_false_block_id {
-                                continue 'blocks;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            // block isn't being used
-            dead_blocks.push(block_id);
-        }
-        // ordering and reversing the indexes means we don't
-        // have to do any index math when a block is removed
-        dead_blocks.sort();
-        dead_blocks.reverse();
-        for i in dead_blocks {
-            if i != 0 { // we don't want to remove the first block
-                blocks.remove(i);
-            }
-        }
-    }
+    fn pass_blocks(&self, compiler: &Compiler, blocks: &mut Vec<Block>) {}
 }

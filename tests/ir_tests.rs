@@ -3,25 +3,23 @@ extern crate alox;
 use alox::ast::Path;
 use alox::ir::Compiler;
 use alox::ir::debug::{Printer, PrintMode};
-use alox::ir::pass::{DeadBranchRemovalPass, Pass};
+use alox::ir::pass::PassManager;
 use alox::parser::Parser;
 
 pub fn check_ir(test_name: &str, code: &str, expected_ir: &str) {
-    // parse the module and compiler it to ir
-    let mut parser = Parser::new();
-    let parsed_program = parser.parse(Path::of("test"), test_name.to_string(), code.to_string());
     let compiler = Compiler::new();
+    let result = compiler.compile(Path::of("test"), test_name.to_string(), code.to_string());
 
-    let mut module = compiler.generate_ir(match parsed_program {
-        Some(program) => program,
-        None => {
-            parser.diagnostics.emit_errors();
-            panic!("expected ast");
+    match result {
+        Ok(_) => {}
+        Err(s) => {
+            eprintln!("{}", s);
+            compiler.diagnostics.read().unwrap().emit_errors();
         }
-    });
-    let pass = DeadBranchRemovalPass {};
-    pass.pass(&mut module);
-    compiler.add_module(module);
+    }
+
+    let pass_manager = PassManager::optimize();
+    pass_manager.apply(&compiler);
 
     // print the module and store it in the buffer
     let mut printer = Printer::new(PrintMode::Buffer);
@@ -30,11 +28,11 @@ pub fn check_ir(test_name: &str, code: &str, expected_ir: &str) {
     }
 
     // remove trailing new lines
-    if printer.buffer.ends_with('\n') {
+    while printer.buffer.ends_with('\n') {
         printer.buffer.pop();
     }
     let mut expected_ir = expected_ir.to_string();
-    if expected_ir.ends_with('\n') {
+    while expected_ir.ends_with('\n') {
         expected_ir.pop();
     }
 

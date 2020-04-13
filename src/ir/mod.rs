@@ -1,9 +1,14 @@
+use std::collections::HashMap;
 use std::fmt::{Display, Error, Formatter};
 use std::sync::RwLock;
 
+use codespan_reporting::diagnostic::Diagnostic;
+
 use crate::ast;
+use crate::diagnostic::{DiagnosticManager, FileId};
+use crate::ir::pass::PassManager;
 use crate::ir::types::{PrimitiveType, Type};
-use std::collections::HashMap;
+use crate::parser::Parser;
 
 pub mod convert;
 pub mod debug;
@@ -90,6 +95,7 @@ pub struct Compiler {
     pub modules: RwLock<Vec<Module>>,
     pub declaration_bank: RwLock<HashMap<DeclarationId, usize>>,
     pub generated_declarations: RwLock<HashMap<DeclarationId, Declaration>>,
+    pub diagnostics: RwLock<DiagnosticManager>,
 }
 
 impl Compiler {
@@ -98,7 +104,39 @@ impl Compiler {
             modules: RwLock::new(Vec::with_capacity(5)),
             declaration_bank: RwLock::new(HashMap::new()),
             generated_declarations: RwLock::new(HashMap::new()),
+            diagnostics: RwLock::new(DiagnosticManager::new()),
         }
+    }
+
+    pub fn compile(&self, path: ast::Path, file_name: String, source: String) -> Result<(), String> {
+        let mut parser = Parser::new();
+        if let Some(program) = parser.parse(path, file_name, source) {
+            // import the diagnostics from the parser
+            self.copy_diagnostics(parser.diagnostics);
+            if self.diagnostics.read().unwrap().has_errors() {
+                Err(String::from("Failed to compile module"))
+            } else {
+                // generate the module and add it
+                let module = self.generate_ir(program);
+                self.add_module(module);
+                Ok(())
+            }
+        } else {
+            Err(String::from("Failed to compile module"))
+        }
+    }
+
+    pub fn copy_diagnostics(&self, mut other: DiagnosticManager) {
+        let mut diagnostics = self.diagnostics.write().unwrap();
+        for (file_name, id) in other.file_ids.iter() {
+            let source = other.files.get(*id).unwrap().source();
+            diagnostics.add_file(file_name.to_string(), source.to_string());
+        }
+        diagnostics.messages.append(&mut other.messages);
+    }
+
+    pub fn add_diagnostic(&self, diagnostic: Diagnostic<FileId>) {
+        self.diagnostics.write().unwrap().add_diagnostic(diagnostic);
     }
 
     pub fn add_module(&self, module: Module) {
