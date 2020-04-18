@@ -218,6 +218,7 @@ impl ir::Compiler {
     ) {
         let current_block_id: ir::BlockId = ir::BlockId(block_builder.current_block);
 
+        // generate the condition expression in the current block
         let condition = self.generate_ir_expression(
             current_path,
             completed_declarations,
@@ -226,16 +227,9 @@ impl ir::Compiler {
             &if_statement.condition,
         );
 
-        let condition_ins = block_builder.current_block().get_instruction(condition);
+        let true_block_id: ir::BlockId = block_builder.create_block();
 
-        let literal_condition: Option<bool> = match condition_ins {
-            ir::Instruction::BooleanLiteral(ref b) => Some((*b).0),
-            _ => None,
-        };
-
-        block_builder.create_block();
-        let true_block_id: ir::BlockId = ir::BlockId(block_builder.current_block);
-
+        // generate the statements inside the if
         for statement in if_statement.block.iter() {
             self.generate_ir_statement(
                 current_path,
@@ -246,8 +240,7 @@ impl ir::Compiler {
             );
         }
 
-        block_builder.create_block();
-        let false_block_id: ir::BlockId = ir::BlockId(block_builder.current_block);
+        let false_block_id: ir::BlockId = block_builder.create_block();
 
         if let Some(elseif) = &if_statement.elseif {
             self.generate_ir_if_statement(
@@ -259,35 +252,13 @@ impl ir::Compiler {
             );
         }
 
-        block_builder.create_block();
-        let merge_block_id: ir::BlockId = ir::BlockId(block_builder.current_block);
+        let branch = ir::Instruction::Branch(Box::new(ir::Branch {
+            condition,
+            true_block: true_block_id,
+            false_block: false_block_id,
+        }));
 
-        if let Some(literal) = literal_condition {
-            if literal {
-                let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: true_block_id }));
-                block_builder.blocks.get_mut(current_block_id.0).expect("uh we just added this block?").add_instruction(jump, self);
-            } else {
-                let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: false_block_id }));
-                block_builder.blocks.get_mut(current_block_id.0).expect("uh we just added this block?").add_instruction(jump, self);
-            }
-        } else {
-            let branch = ir::Instruction::Branch(Box::new(ir::Branch {
-                condition,
-                true_block: true_block_id,
-                false_block: false_block_id,
-            }));
-            block_builder.blocks.get_mut(current_block_id.0).expect("uh we just added this block?").add_instruction(branch, self);
-        }
-
-        let jump = ir::Instruction::Jump(Box::new(ir::Jump { block: merge_block_id }));
-        if let Some(literal) = literal_condition {
-            let block_id = if literal {
-                true_block_id.0
-            } else {
-                false_block_id.0
-            };
-            block_builder.blocks.get_mut(block_id).expect("uh we just added this block?").add_instruction(jump, self);
-        }
+        block_builder.blocks.get_mut(current_block_id.0).expect("uh we just added this block?").add_instruction(branch, self);
     }
 
     #[allow(unreachable_patterns)]
@@ -413,7 +384,7 @@ impl BlockBuilder {
         self.blocks.get_mut(self.current_block).unwrap()
     }
 
-    pub fn create_block(&mut self) -> &mut ir::Block {
+    pub fn create_block(&mut self) -> ir::BlockId {
         // don't create a new block if the current block has 0 instructions
         if self.current_block().instructions.len() > 0 {
             // count how many instructions were in all of the other blocks so we know where to start
@@ -425,7 +396,7 @@ impl BlockBuilder {
             self.current_block = self.blocks.len();
             self.blocks.push(ir::Block::new(self.current_block, ins_start_offset + 1));
         }
-        self.current_block()
+        ir::BlockId(self.current_block)
     }
 
     pub fn add_instruction(&mut self, instruction: ir::Instruction) {

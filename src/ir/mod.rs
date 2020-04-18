@@ -420,7 +420,7 @@ impl Block {
                 }
             }
             if found {
-                return InstructionId(found_ins);
+                return InstructionId(found_ins + self.ins_start_offset);
             }
         }
         self.instructions.push(instruction);
@@ -452,7 +452,7 @@ impl Instruction {
     pub fn get_type(&self, compiler: &Compiler, block: &Block) -> Box<Type> {
         return match self {
             Instruction::BooleanLiteral(_) => builtin::BOOL.get_type(compiler),
-            Instruction::IntegerLiteral(_) => builtin::COMPTIME_INT.get_type(compiler),
+            Instruction::IntegerLiteral(_) => builtin::INT32.get_type(compiler),
             Instruction::DeclarationReference(s) => s.declaration.get_type(compiler),
             Instruction::GetParameter(_) => Box::new(types::Type::Unresolved(types::UnresolvedType { name: "UnimplementedParamGet".to_string() })),
             Instruction::FunctionCall(f) => {

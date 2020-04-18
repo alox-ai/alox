@@ -223,6 +223,15 @@ impl<'c> LLVMBackend<'c> {
                             let value = LLVMBuildLoad2(self.builder, llvm_type, ptr, instruction_name.as_ptr());
                             instruction_map.insert(instruction_id, value);
                         }
+                        Instruction::GetParameter(ref g) => {
+                            for (i, (name, _)) in function.arguments.iter().enumerate() {
+                                if name == &g.name {
+                                    let value = LLVMGetParam(llvm_function, i as c_uint);
+                                    instruction_map.insert(instruction_id, value);
+                                    break;
+                                }
+                            }
+                        }
                         Instruction::Jump(ref j) => {
                             let to_llvm_block = block_map.get(&j.block.0).unwrap();
                             LLVMBuildBr(self.builder, *to_llvm_block);
@@ -234,7 +243,8 @@ impl<'c> LLVMBackend<'c> {
                             LLVMBuildCondBr(self.builder, cond, true_block, false_block);
                         }
                         Instruction::Return(ref r) => {
-                            let value = *instruction_map.get(&r.instruction.0).expect(&format!("couldn't find instruction: {}", &r.instruction.0));
+                            let value = *instruction_map.get(&r.instruction.0)
+                                .expect(&format!("couldn't find instruction: {}", &r.instruction.0));
                             LLVMBuildRet(self.builder, value);
                         }
                         _ => {}
