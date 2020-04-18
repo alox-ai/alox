@@ -128,7 +128,7 @@ impl Printer {
 
         self.push();
         for (id, instruction) in block.instructions.iter().enumerate() {
-            self.print_instruction(compiler, id, instruction, block, function);
+            self.print_instruction(compiler, id + block.ins_start_offset, instruction, block, function);
         }
         self.pop();
     }
@@ -142,6 +142,7 @@ impl Printer {
         function: &Function,
     ) {
         let ins_type = instruction.get_type_with_context(compiler, block, function).name();
+        // let ins_type = "test".to_string();
         match *instruction {
             Instruction::DeclarationReference(ref d) => {
                 let (path, name) = &d.name;
@@ -186,7 +187,7 @@ impl Printer {
                 self.print(format!("jump block#{}", block_id.0))
             }
             Instruction::Load(ref load) => {
-                self.print(format!("%{} : {} = load %{}", id, ins_type, load.name))
+                self.print(format!("%{} : {} = load %{} (ref %{})", id, ins_type, load.name, load.reference_ins.0))
             }
             Instruction::Store(ref store) => {
                 self.print(format!("store %{} in %{}", store.value.0, store.name))

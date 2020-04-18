@@ -390,13 +390,15 @@ impl Function {
 #[derive(Clone, Debug)]
 pub struct Block {
     pub id: BlockId,
+    pub ins_start_offset: usize,
     pub instructions: Vec<Instruction>,
 }
 
 impl Block {
-    pub fn new(id: usize) -> Block {
+    pub fn new(id: usize, ins_start: usize) -> Block {
         Block {
             id: BlockId(id),
+            ins_start_offset: ins_start,
             instructions: Vec::with_capacity(5),
         }
     }
@@ -422,11 +424,11 @@ impl Block {
             }
         }
         self.instructions.push(instruction);
-        InstructionId(self.instructions.len() - 1)
+        InstructionId(self.instructions.len() - 1 + self.ins_start_offset)
     }
 
     pub fn get_instruction(&self, id: InstructionId) -> &Instruction {
-        self.instructions.get(id.0 as usize).expect("invalid instruction id")
+        self.instructions.get(id.0 as usize - self.ins_start_offset).expect("invalid instruction id")
     }
 }
 
@@ -500,16 +502,26 @@ impl Instruction {
                 }
             }
         }
+        if let Instruction::Load(l) = self {
+            for block in context.blocks.iter() {
+                for (ins_id, ins) in block.instructions.iter().enumerate() {
+                    let ins_id = ins_id + block.ins_start_offset;
+                    if ins_id == l.reference_ins.0 {
+                        return ins.get_type_with_context(compiler, block, context);
+                    }
+                }
+            }
+        }
         self.get_type(compiler, block)
     }
 }
 
 // -- INSTRUCTIONS -- \\
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct BlockId(pub usize);
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct InstructionId(pub usize);
 
 #[derive(Clone, Debug)]

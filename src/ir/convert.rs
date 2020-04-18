@@ -402,7 +402,7 @@ pub struct BlockBuilder {
 impl BlockBuilder {
     pub fn new() -> Self {
         let mut blocks = Vec::new();
-        blocks.push(ir::Block::new(0));
+        blocks.push(ir::Block::new(0, 0));
         Self {
             blocks,
             current_block: 0,
@@ -416,8 +416,14 @@ impl BlockBuilder {
     pub fn create_block(&mut self) -> &mut ir::Block {
         // don't create a new block if the current block has 0 instructions
         if self.current_block().instructions.len() > 0 {
+            // count how many instructions were in all of the other blocks so we know where to start
+            let mut ins_start_offset = 0usize;
+            for block in self.blocks.iter() {
+                ins_start_offset += block.instructions.len();
+            }
+
             self.current_block = self.blocks.len();
-            self.blocks.push(ir::Block::new(self.current_block));
+            self.blocks.push(ir::Block::new(self.current_block, ins_start_offset + 1));
         }
         self.current_block()
     }

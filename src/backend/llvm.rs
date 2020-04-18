@@ -80,6 +80,9 @@ impl<'c> LLVMBackend<'c> {
                             b => panic!(format!("couldn't convert float type {:?}", b)),
                         }
                     }
+                    PrimitiveType::Bool => {
+                        LLVMIntTypeInContext(self.context, 1)
+                    }
                     p => panic!(format!("couldn't convert primitive type {:?}", p))
                 }
             }
@@ -99,24 +102,31 @@ impl<'c> LLVMBackend<'c> {
     }
 
     pub fn process(&mut self) {
-        // convert declarations
+        // process "headers" of declarations first
+        for declaration in self.module.declarations.iter() {
+            self.process_declaration_header(declaration);
+        }
         for declaration in self.module.declarations.iter() {
             self.process_declaration(declaration);
         }
     }
 
-    fn process_declaration(&mut self, declaration: &Declaration) {
+    /// Generate anything needed to refer to a declaration out of order, like
+    /// functions calling later defined functions needing a declaration
+    fn process_declaration_header(&mut self, declaration: &Declaration) {
         let declaration_id = DeclarationId::from(Some(self.module), declaration);
         match declaration {
             Declaration::Function(ref function) => {
                 let function_name = CString::new(function.name.clone()).unwrap();
-                self.process_function(declaration_id, function_name, function.as_ref());
+                self.process_function_header(declaration_id, function_name, function.as_ref());
             }
+            // TODO: cache struct types?
             _ => {}
         }
     }
 
-    fn process_function(
+    /// Declares the function in the LLVM module without creating a body for it.
+    fn process_function_header(
         &mut self,
         declaration_id: DeclarationId,
         function_name: CString,
@@ -127,7 +137,110 @@ impl<'c> LLVMBackend<'c> {
             let llvm_function_type: LLVMTypeRef = self.convert_type(function_type.deref().clone());
             let llvm_function: LLVMValueRef = LLVMAddFunction(self.llvm_module, function_name.as_ptr(), llvm_function_type);
             self.dec_cache.insert(declaration_id, (llvm_function, llvm_function_type));
-            
+        }
+    }
+
+    fn process_declaration(&mut self, declaration: &Declaration) {
+        let declaration_id = DeclarationId::from(Some(self.module), declaration);
+        match declaration {
+            Declaration::Function(ref function) => {
+                let function_name = CString::new(function.name.clone()).unwrap();
+                self.process_function_body(declaration_id, function_name, function.as_ref());
+            }
+            _ => {}
+        }
+    }
+
+    fn process_function_body(
+        &mut self,
+        declaration_id: DeclarationId,
+        function_name: CString,
+        function: &Function,
+    ) {
+        unsafe {
+            let (llvm_function, llvm_function_type) = self.dec_cache.get(&declaration_id).unwrap().clone();
+            LLVMSetFunctionCallConv(llvm_function, LLVMCallConv::LLVMCCallConv as u32);
+            self.process_blocks(declaration_id, function_name, function, llvm_function, function.blocks.as_slice());
+        }
+    }
+
+    fn process_blocks(
+        &mut self,
+        declaration_id: DeclarationId,
+        function_name: CString,
+        function: &Function,
+        llvm_function: LLVMValueRef,
+        blocks: &[Block],
+    ) {
+        let mut block_map: HashMap<usize, LLVMBasicBlockRef> = HashMap::new();
+        let mut alloca_map: HashMap<String, LLVMValueRef> = HashMap::new();
+
+        for (block_id, _) in blocks.iter().enumerate() {
+            let block_name = CString::new(format!("block{}", block_id)).unwrap();
+            let llvm_block = unsafe { LLVMAppendBasicBlock(llvm_function, block_name.as_ptr()) };
+            block_map.insert(block_id, llvm_block);
+        }
+
+        for (block_id, block) in blocks.iter().enumerate() {
+            let mut instruction_map: HashMap<usize, LLVMValueRef> = HashMap::new();
+            let llvm_block = *block_map.get(&block_id).unwrap();
+            unsafe {
+                LLVMPositionBuilderAtEnd(self.builder, llvm_block);
+
+                for (instruction_id, instruction) in block.instructions.iter().enumerate() {
+                    let instruction_id = instruction_id + block.ins_start_offset;
+                    let instruction_name = CString::new(format!("ins{}", instruction_id)).unwrap();
+
+                    match *instruction {
+                        Instruction::IntegerLiteral(ref i) => {
+                            let int_type = self.convert_type(Type::Primitive(PrimitiveType::Int(32)));
+                            let value = LLVMConstInt(int_type, i.0 as u64, 0);
+                            instruction_map.insert(instruction_id, value);
+                        }
+                        Instruction::BooleanLiteral(ref b) => {
+                            let bool_type = self.convert_type(Type::Primitive(PrimitiveType::Bool));
+                            let value = LLVMConstInt(bool_type, if b.0 { 1 } else { 0 }, 0);
+                            instruction_map.insert(instruction_id, value);
+                        }
+                        Instruction::Alloca(ref a) => {
+                            let typ = block.get_instruction(a.reference_ins).get_type(self.compiler, block);
+                            let llvm_type = self.convert_type(typ.deref().clone());
+                            let value = LLVMBuildAlloca(self.builder, llvm_type, instruction_name.as_ptr());
+                            instruction_map.insert(instruction_id, value);
+                            alloca_map.insert(a.name.clone(), value);
+                        }
+                        Instruction::Store(ref s) => {
+                            let val = *instruction_map.get(&s.value.0).unwrap();
+                            let ptr = *alloca_map.get(&s.name).unwrap();
+                            let value = LLVMBuildStore(self.builder, val, ptr);
+                            instruction_map.insert(instruction_id, value);
+                        }
+                        Instruction::Load(ref l) => {
+                            let typ = instruction.get_type_with_context(self.compiler, block, function);
+                            // let typ = block.get_instruction(l.reference_ins).get_type(self.compiler, block);
+                            let llvm_type = self.convert_type(typ.deref().clone());
+                            let ptr = *alloca_map.get(&l.name).unwrap();
+                            let value = LLVMBuildLoad2(self.builder, llvm_type, ptr, instruction_name.as_ptr());
+                            instruction_map.insert(instruction_id, value);
+                        }
+                        Instruction::Jump(ref j) => {
+                            let to_llvm_block = block_map.get(&j.block.0).unwrap();
+                            LLVMBuildBr(self.builder, *to_llvm_block);
+                        }
+                        Instruction::Branch(ref b) => {
+                            let cond = *instruction_map.get(&b.condition.0).unwrap();
+                            let true_block = *block_map.get(&b.true_block.0).unwrap();
+                            let false_block = *block_map.get(&b.false_block.0).unwrap();
+                            LLVMBuildCondBr(self.builder, cond, true_block, false_block);
+                        }
+                        Instruction::Return(ref r) => {
+                            let value = *instruction_map.get(&r.instruction.0).expect(&format!("couldn't find instruction: {}", &r.instruction.0));
+                            LLVMBuildRet(self.builder, value);
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
     }
 
