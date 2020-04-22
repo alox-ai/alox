@@ -96,6 +96,10 @@ Statement: Statement = {
     <v:VariableDeclaration> => Statement::VariableDeclaration(Box::new(v)),
     "return" <e:Expr> => Statement::Return(Box::new(Return{expression:e})),
     <ifstatement:IfStatement> => Statement::If(ifstatement),
+    <e:Expr> "=" <val:Expr> => Statement::Assign(Box::new(Assign {
+        aggregate: e,
+        value: val,
+    })),
     ! => { errors.push(<>); Statement::Error },
 };
 
@@ -142,9 +146,18 @@ Expr: Expression = {
     <n:Num> => Expression::IntegerLiteral(Box::new(IntegerLiteral(n))),
     <b:Bool> => Expression::BooleanLiteral(Box::new(BooleanLiteral(b))),
     <f:FunctionCall> => Expression::FunctionCall(Box::new(f)),
-    <path:Path?> <name:Name> => Expression::VariableReference(Box::new(VariableReference {
-        path: path,
-        name: name,
+    <path:Path> => {
+        let mut path = path;
+        let name = path.pop();
+        let path = if path.0.len() > 1 { Some(path) } else { None };
+        Expression::VariableReference(Box::new(VariableReference {
+            path: path,
+            name: name,
+        }))
+    },
+    <e:Expr> "." <name:Name> => Expression::GetField(Box::new(GetField {
+        field: name,
+        struc: e,
     })),
     ! => { errors.push(<>); Expression::Error },
 };

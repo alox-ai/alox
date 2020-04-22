@@ -16,6 +16,10 @@ impl Path {
         Self(vec)
     }
 
+    pub fn pop(&mut self) -> String {
+        self.0.pop().expect("tried to pop empty path")
+    }
+
     pub fn to_string(&self) -> String {
         self.0.join("::")
     }
@@ -44,6 +48,7 @@ pub enum Expression {
     IntegerLiteral(Box<IntegerLiteral>),
     VariableReference(Box<VariableReference>),
     FunctionCall(Box<FunctionCall>),
+    GetField(Box<GetField>),
     Error,
 }
 
@@ -54,6 +59,7 @@ impl Expression {
             Expression::IntegerLiteral(_) => "IntegerLiteral",
             Expression::VariableReference(_) => "VariableReference",
             Expression::FunctionCall(_) => "FunctionCall",
+            Expression::GetField(_) => "GetField",
             Expression::Error => "Error",
         }
             .to_string()
@@ -66,6 +72,7 @@ pub enum Statement {
     If(Box<IfStatement>),
     Return(Box<Return>),
     FunctionCall(Box<FunctionCall>),
+    Assign(Box<Assign>),
     Error,
 }
 
@@ -161,6 +168,12 @@ pub struct IfStatement {
     pub elseif: Option<Box<IfStatement>>,
 }
 
+#[derive(Clone, Debug)]
+pub struct Assign {
+    pub aggregate: Expression,
+    pub value: Expression,
+}
+
 // -- EXPRESSIONS -- \\
 
 #[derive(Clone, Debug)]
@@ -199,4 +212,10 @@ impl VariableReference {
 pub struct FunctionCall {
     pub function: Expression,
     pub arguments: Vec<Expression>,
+}
+
+#[derive(Clone, Debug)]
+pub struct GetField {
+    pub struc: Expression,
+    pub field: String,
 }

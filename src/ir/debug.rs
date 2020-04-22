@@ -187,14 +187,19 @@ impl Printer {
                 self.print(format!("jump block#{}", block_id.0))
             }
             Instruction::Load(ref load) => {
-                self.print(format!("%{} : {} = load %{} (ref %{})", id, ins_type, load.name, load.reference_ins.0))
+                self.print(format!("%{} : {} = load %{}", id, ins_type, load.ptr.0))
             }
             Instruction::Store(ref store) => {
-                self.print(format!("store %{} in %{}", store.value.0, store.name))
+                self.print(format!("store %{} in %{}", store.value.0, store.ptr.0))
             }
             Instruction::Alloca(ref alloca) => {
-                let inner_type = block.get_instruction(alloca.reference_ins).get_type(compiler, block);
+                let inner_type = function.get_instruction(alloca.reference_ins).map(|ins| ins.get_type(compiler, block))
+                    .expect("couldn't find alloca instruction in function");
                 self.print(format!("%{} : {} = alloca {}", alloca.name, ins_type, inner_type.name()))
+            }
+            Instruction::GetField(ref get) => {
+                let (index, typ) = get.get_index_and_type(compiler, function, block).expect("couldn't find index and type of get field ins");
+                self.print(format!("%{} : {} = getfield %{}, {} ({} : {})", id, ins_type, get.aggregate.0, index, get.field, typ.name()))
             }
             ref i => self.print(format!("%{} : {} = unprintable ({:?})", id, ins_type, i)),
         }

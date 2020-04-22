@@ -9,6 +9,7 @@ use crate::diagnostic::{DiagnosticManager, FileId};
 use crate::ir::pass::PassManager;
 use crate::ir::types::{PrimitiveType, Type};
 use crate::parser::Parser;
+use crate::ir::types::Type::GenericType;
 
 pub mod convert;
 pub mod debug;
@@ -248,7 +249,14 @@ impl Declaration {
             Declaration::Function(f) => f.get_type(compiler),
             Declaration::Struct(s) => s.get_type(compiler),
             Declaration::Type(t) => t.clone(),
-            _ => Box::new(types::Type::Unresolved(types::UnresolvedType::of("UnresolvedDeclaration"))),
+            Declaration::Variable(v) => {
+                if let Some(dec) = compiler.resolve(&v.typ) {
+                    dec.get_type(compiler)
+                } else {
+                    Box::new(types::Type::Unresolved(types::UnresolvedType::of(&format!("UnresolvedVariableType"))))
+                }
+            }
+            d => Box::new(types::Type::Unresolved(types::UnresolvedType::of(&format!("UnresolvedDeclaration({:?})", d)))),
         }
     }
 }
@@ -374,6 +382,15 @@ impl Function {
         Box::new(types::Type::Function(types::FunctionType { arguments, result }))
     }
 
+    pub fn get_instruction(&self, id: InstructionId) -> Option<&Instruction> {
+        for block in self.blocks.iter() {
+            if block.contains(id) {
+                return Some(block.get_instruction(id));
+            }
+        }
+        None
+    }
+
     pub fn is_function(&self) -> bool {
         self.kind == FunctionKind::Function
     }
@@ -403,32 +420,17 @@ impl Block {
         }
     }
 
-    pub fn add_instruction(&mut self, instruction: Instruction, compiler: &Compiler) -> InstructionId {
-        // don't add the instruction to this block if it already has an instruction
-        // that doesn't return, like Return, Branch, Jump, etc
-        {
-            let mut found = false;
-            let mut found_ins = 0;
-            for (index, instruction) in self.instructions.iter().enumerate() {
-                match *instruction.get_type(compiler, self) {
-                    Type::Primitive(PrimitiveType::NoReturn) => {
-                        found_ins = index;
-                        found = true;
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-            if found {
-                return InstructionId(found_ins + self.ins_start_offset);
-            }
-        }
+    pub fn add_instruction(&mut self, instruction: Instruction) -> InstructionId {
         self.instructions.push(instruction);
         InstructionId(self.instructions.len() - 1 + self.ins_start_offset)
     }
 
     pub fn get_instruction(&self, id: InstructionId) -> &Instruction {
         self.instructions.get(id.0 as usize - self.ins_start_offset).expect("invalid instruction id")
+    }
+
+    pub fn contains(&self, id: InstructionId) -> bool {
+        id.0 >= self.ins_start_offset && id.0 < self.ins_start_offset + self.instructions.len()
     }
 }
 
@@ -443,6 +445,7 @@ pub enum Instruction {
     DeclarationReference(Box<DeclarationReference>),
     GetParameter(Box<GetParameter>),
     FunctionCall(Box<FunctionCall>),
+    GetField(Box<GetField>),
     Return(Box<Return>),
     Jump(Box<Jump>),
     Branch(Box<Branch>),
@@ -477,7 +480,7 @@ impl Instruction {
                 types::GenericType::wrap("Pointer".into(), inner_type)
             }
             Instruction::Load(load) => {
-                block.get_instruction(load.reference_ins).get_type(compiler, block)
+                block.get_instruction(load.ptr).get_type(compiler, block)
             }
             Instruction::Return(_)
             | Instruction::Unreachable(_)
@@ -490,27 +493,42 @@ impl Instruction {
     /// Get type of an instruction in the context of a function or behaviour.
     /// Useful for getting the type of parameters.
     pub fn get_type_with_context(&self, compiler: &Compiler, block: &Block, context: &Function) -> Box<Type> {
-        if let Instruction::GetParameter(g) = self {
-            let name = &g.name;
-            for (arg_name, declaration) in &context.arguments {
-                if arg_name == name {
-                    return if let Some(declaration) = compiler.resolve(declaration) {
-                        declaration.get_type(compiler)
-                    } else {
-                        declaration.get_type(compiler)
-                    };
-                }
-            }
-        }
-        if let Instruction::Load(l) = self {
-            for block in context.blocks.iter() {
-                for (ins_id, ins) in block.instructions.iter().enumerate() {
-                    let ins_id = ins_id + block.ins_start_offset;
-                    if ins_id == l.reference_ins.0 {
-                        return ins.get_type_with_context(compiler, block, context);
+        match self {
+            Instruction::GetParameter(g) => {
+                let name = &g.name;
+                for (arg_name, declaration) in &context.arguments {
+                    if arg_name == name {
+                        let arg_type = if let Some(declaration) = compiler.resolve(declaration) {
+                            declaration.get_type(compiler)
+                        } else {
+                            declaration.get_type(compiler)
+                        };
+                        return arg_type;
+                        // return types::GenericType::wrap("Pointer".into(), arg_type);
                     }
                 }
             }
+            Instruction::Load(l) => {
+                for block in context.blocks.iter() {
+                    for (ins_id, ins) in block.instructions.iter().enumerate() {
+                        let ins_id = ins_id + block.ins_start_offset;
+                        if ins_id == l.ptr.0 {
+                            let ptr_type = ins.get_type_with_context(compiler, block, context);
+                            return if let Type::GenericType(g) = *ptr_type {
+                                g.arguments.get(0).expect("empty generic type in load ptr?").clone()
+                            } else {
+                                ptr_type
+                            };
+                        }
+                    }
+                }
+            }
+            Instruction::GetField(get) => {
+                let (_, typ) = get.get_index_and_type(compiler, context, block)
+                    .expect("couldn't find index and type of get field ins");
+                return types::GenericType::wrap("Pointer".into(), typ);
+            }
+            _ => {}
         }
         self.get_type(compiler, block)
     }
@@ -526,13 +544,12 @@ pub struct InstructionId(pub usize);
 
 #[derive(Clone, Debug)]
 pub struct Load {
-    pub name: String,
-    pub reference_ins: InstructionId,
+    pub ptr: InstructionId,
 }
 
 #[derive(Clone, Debug)]
 pub struct Store {
-    pub name: String,
+    pub ptr: InstructionId,
     pub value: InstructionId,
 }
 
@@ -563,6 +580,30 @@ pub struct GetParameter {
 pub struct FunctionCall {
     pub function: InstructionId,
     pub arguments: Vec<InstructionId>,
+}
+
+#[derive(Clone, Debug)]
+pub struct GetField {
+    pub aggregate: InstructionId,
+    pub field: String,
+}
+
+impl GetField {
+    /// get the index and type of the field from the struct
+    pub fn get_index_and_type(&self, compiler: &Compiler, function: &Function, block: &Block) -> Option<(usize, Box<Type>)> {
+        if let Some(struct_type) = function.get_instruction(self.aggregate).map(|ins| {
+            ins.get_type_with_context(compiler, block, function)
+        }) {
+            if let Type::Struct(struct_type) = *struct_type {
+                for (i, (name, typ)) in struct_type.fields.iter().enumerate() {
+                    if name == &self.field {
+                        return Some((i, typ.clone()));
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 #[derive(Clone, Debug)]

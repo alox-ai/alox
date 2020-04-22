@@ -173,7 +173,7 @@ impl<'c> LLVMBackend<'c> {
         blocks: &[Block],
     ) {
         let mut block_map: HashMap<usize, LLVMBasicBlockRef> = HashMap::new();
-        let mut alloca_map: HashMap<String, LLVMValueRef> = HashMap::new();
+        let mut instruction_map: HashMap<usize, LLVMValueRef> = HashMap::new();
 
         for (block_id, _) in blocks.iter().enumerate() {
             let block_name = CString::new(format!("block{}", block_id)).unwrap();
@@ -182,7 +182,6 @@ impl<'c> LLVMBackend<'c> {
         }
 
         for (block_id, block) in blocks.iter().enumerate() {
-            let mut instruction_map: HashMap<usize, LLVMValueRef> = HashMap::new();
             let llvm_block = *block_map.get(&block_id).unwrap();
             unsafe {
                 LLVMPositionBuilderAtEnd(self.builder, llvm_block);
@@ -207,20 +206,19 @@ impl<'c> LLVMBackend<'c> {
                             let llvm_type = self.convert_type(typ.deref().clone());
                             let value = LLVMBuildAlloca(self.builder, llvm_type, instruction_name.as_ptr());
                             instruction_map.insert(instruction_id, value);
-                            alloca_map.insert(a.name.clone(), value);
                         }
                         Instruction::Store(ref s) => {
+                            let ptr = *instruction_map.get(&s.ptr.0).unwrap();
                             let val = *instruction_map.get(&s.value.0).unwrap();
-                            let ptr = *alloca_map.get(&s.name).unwrap();
                             let value = LLVMBuildStore(self.builder, val, ptr);
                             instruction_map.insert(instruction_id, value);
                         }
                         Instruction::Load(ref l) => {
-                            let typ = instruction.get_type_with_context(self.compiler, block, function);
+                            // let typ = instruction.get_type_with_context(self.compiler, block, function);
                             // let typ = block.get_instruction(l.reference_ins).get_type(self.compiler, block);
-                            let llvm_type = self.convert_type(typ.deref().clone());
-                            let ptr = *alloca_map.get(&l.name).unwrap();
-                            let value = LLVMBuildLoad2(self.builder, llvm_type, ptr, instruction_name.as_ptr());
+                            // let llvm_type = self.convert_type(typ.deref().clone());
+                            let ptr = *instruction_map.get(&l.ptr.0).unwrap();
+                            let value = LLVMBuildLoad(self.builder, ptr, instruction_name.as_ptr());
                             instruction_map.insert(instruction_id, value);
                         }
                         Instruction::GetParameter(ref g) => {

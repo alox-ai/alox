@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::ast;
 use crate::ir;
 use crate::util::Either;
+use crate::ir::InstructionId;
 
 impl ir::Compiler {
     pub fn generate_ir(&self, program: ast::Program) -> ir::Module {
@@ -148,11 +149,11 @@ impl ir::Compiler {
                         name: d.name.clone(),
                         reference_ins: expr_ins,
                     }));
-                    lvt.set(d.name.clone(), expr_ins);
-                    block_builder.add_instruction(alloca);
+                    let alloca_id = block_builder.add_instruction(alloca);
+                    lvt.set(d.name.clone(), alloca_id.clone());
 
                     let store = ir::Instruction::Store(Box::new(ir::Store {
-                        name: d.name.clone(),
+                        ptr: alloca_id,
                         value: expr_ins,
                     }));
                     block_builder.add_instruction(store);
@@ -201,6 +202,28 @@ impl ir::Compiler {
                     },
                 ));
                 block_builder.add_instruction(call_ins);
+            }
+            ast::Statement::Assign(assign) => {
+                let aggregate = self.generate_ir_expression(
+                    current_path,
+                    completed_declarations,
+                    lvt,
+                    block_builder.current_block(),
+                    &assign.aggregate,
+                );
+                let value = self.generate_ir_expression(
+                    current_path,
+                    completed_declarations,
+                    lvt,
+                    block_builder.current_block(),
+                    &assign.value,
+                );
+
+                let store = ir::Instruction::Store(Box::new(ir::Store {
+                    ptr: aggregate,
+                    value,
+                }));
+                block_builder.add_instruction(store);
             }
             ast::Statement::If(if_statement) => {
                 self.generate_ir_if_statement(current_path, completed_declarations, &mut lvt, &mut block_builder, &if_statement)
@@ -258,7 +281,7 @@ impl ir::Compiler {
             false_block: false_block_id,
         }));
 
-        block_builder.blocks.get_mut(current_block_id.0).expect("uh we just added this block?").add_instruction(branch, self);
+        block_builder.blocks.get_mut(current_block_id.0).expect("uh we just added this block?").add_instruction(branch);
     }
 
     #[allow(unreachable_patterns)]
@@ -318,12 +341,11 @@ impl ir::Compiler {
                     if let Some(result) = result {
                         match result {
                             Either::Left(reference_ins) => {
-                                // return early if this instruction is already in the block
-                                // return reference;
-                                let load = ir::Instruction::Load(Box::new(ir::Load { name, reference_ins }));
-                                load
+                                // variable has been allocated already, load from the pointer
+                                ir::Instruction::Load(Box::new(ir::Load { ptr: reference_ins }))
                             }
                             Either::Right(generated) => {
+                                // instruction was just generated (probably for a GetParam)
                                 generated
                             }
                         }
@@ -356,12 +378,26 @@ impl ir::Compiler {
                     }
                 }
             }
+            ast::Expression::GetField(g) => {
+                let struc = self.generate_ir_expression(
+                    current_path,
+                    completed_declarations,
+                    lvt,
+                    block,
+                    &g.struc,
+                );
+
+                ir::Instruction::GetField(Box::new(ir::GetField {
+                    aggregate: struc,
+                    field: g.field.clone(),
+                }))
+            }
             e => ir::Instruction::Unreachable(format!(
                 "UnhandledExpression({})",
                 e.name()
             )),
         };
-        block.add_instruction(ins, self)
+        block.add_instruction(ins)
     }
 }
 
@@ -399,12 +435,12 @@ impl BlockBuilder {
         ir::BlockId(self.current_block)
     }
 
-    pub fn add_instruction(&mut self, instruction: ir::Instruction) {
-        self.blocks
+    pub fn add_instruction(&mut self, instruction: ir::Instruction) -> InstructionId {
+        let block = self.blocks
             .get_mut(self.current_block)
-            .unwrap()
-            .instructions
-            .push(instruction);
+            .unwrap();
+        block.instructions.push(instruction);
+        ir::InstructionId(block.ins_start_offset + block.instructions.len() - 1)
     }
 
     pub fn block_id(&self, block: &ir::Block) -> ir::BlockId {
