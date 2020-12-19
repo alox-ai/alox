@@ -1,4 +1,3 @@
-/target
-**/*.rs.bk
+build/
+.gradle/
 .idea/
-*.iml
