@@ -43,6 +43,7 @@ object AstParser : Grammar<List<Declaration>>() {
     private val DOT by literalToken(".")
     private val COLON by literalToken(":")
     private val DOUBLE_COLON by literalToken("::")
+    private val AMPERSAND by literalToken("&")
 
     // keywords
     private val IF by literalToken("if")
@@ -57,6 +58,7 @@ object AstParser : Grammar<List<Declaration>>() {
     private val FALSE by literalToken("false")
     private val NEW by literalToken("new")
     private val LET by literalToken("let")
+    private val THIS by literalToken("this")
 
     // literals
     private val INT_LITERAL by regexToken("\\d+")
@@ -116,12 +118,23 @@ object AstParser : Grammar<List<Declaration>>() {
     private val variableReference: Parser<VariableReference>
             by typeNamePart map { (path, id) -> VariableReference(path, id) }
 
+    private val thisExpression: Parser<This>
+            by THIS map { This }
+
+    private val addressOf: Parser<AddressOf>
+            by -AMPERSAND and parser(::expression) map { AddressOf(it) }
+
     private val functionCall: Parser<FunctionCall>
             by parser(::wrappedExpression) and -LEFT_PAREN and expressionList and -RIGHT_PAREN map {
                 FunctionCall(
                     it.t1,
                     it.t2
                 )
+            }
+
+    private val methodCall: Parser<MethodCall>
+            by parser(::wrappedExpression) and -DOT and name and -LEFT_PAREN and expressionList and -RIGHT_PAREN map {
+                MethodCall(it.t1, it.t2, it.t3)
             }
 
     private val getField: Parser<GetField>
@@ -131,10 +144,10 @@ object AstParser : Grammar<List<Declaration>>() {
             by -NEW and typeName map { New(it) }
 
     private val nonRecursiveExpression: Parser<Expression>
-            by booleanLiteral or integerLiteral or floatLiteral or variableReference
+            by thisExpression or booleanLiteral or integerLiteral or floatLiteral or addressOf or variableReference
 
     private val expression: Parser<Expression>
-            by functionCall or getField or new or binaryOperator or nonRecursiveExpression
+            by methodCall or functionCall or getField or new or binaryOperator or nonRecursiveExpression
 
     private val wrappedExpression: Parser<Expression>
             by (-LEFT_PAREN and expression and -RIGHT_PAREN) or nonRecursiveExpression
@@ -161,6 +174,11 @@ object AstParser : Grammar<List<Declaration>>() {
                 Statement.FunctionCall(it.t1, it.t2)
             }
 
+    private val methodCallStatement: Parser<Statement.MethodCall>
+            by wrappedExpression and -DOT and name and -LEFT_PAREN and expressionList and -RIGHT_PAREN map {
+                Statement.MethodCall(it.t1, it.t2, it.t3)
+            }
+
     private val ifStatementPart
             by -IF and -LEFT_PAREN and expression and -RIGHT_PAREN and parser(::block) map {
                 it.t1 to it.t2
@@ -180,7 +198,7 @@ object AstParser : Grammar<List<Declaration>>() {
             by -RETURN and expression map { Statement.Return(it) }
 
     private val statement: Parser<Statement>
-            by variableDefinition or variableDeclaration or assignment or returnStatement or functionCallStatement or ifStatement
+            by variableDefinition or variableDeclaration or assignment or returnStatement or methodCallStatement or functionCallStatement or ifStatement
 
     private val block: Parser<List<Statement>>
             by -LEFT_BRACE and zeroOrMore(statement) and -RIGHT_BRACE
@@ -202,7 +220,14 @@ object AstParser : Grammar<List<Declaration>>() {
                     optional(-LEFT_BRACKET and separatedTerms(name, COMMA) and -LEFT_BRACKET) and
                     // args and body
                     -LEFT_PAREN and argumentList and -RIGHT_PAREN and optional(-COLON and typeName) and block map {
-                Declaration.Function(it.t2, it.t1, it.t3.orEmpty(), it.t4, it.t6, it.t5 ?: TypeName(Path.empty, "Void", listOf()))
+                Declaration.Function(
+                    it.t2,
+                    it.t1,
+                    it.t3.orEmpty(),
+                    it.t4,
+                    it.t6,
+                    it.t5 ?: TypeName(Path.empty, "Void", listOf())
+                )
             }
 
     private val structKind: Parser<Declaration.Struct.Kind>

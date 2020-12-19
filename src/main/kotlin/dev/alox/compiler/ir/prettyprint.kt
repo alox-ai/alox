@@ -47,7 +47,10 @@ class PrettyPrinter(module: IrModule) {
                         p(
                             "%$id = ${
                                 when (it) {
+                                    is IrModule.Instruction.BooleanLiteral -> "${it.value}"
                                     is IrModule.Instruction.IntegerLiteral -> "$${it.value}"
+                                    is IrModule.Instruction.FloatLiteral -> "$${it.value}"
+                                    is IrModule.Instruction.This -> "this"
                                     is IrModule.Instruction.GetParameter -> "getparam %${it.name}"
                                     is IrModule.Instruction.DeclarationReference -> "%${it.declarationRef}"
                                     is IrModule.Instruction.GetField -> "getfield %${insMap[it.aggregate]} \"${it.field}\""
@@ -56,6 +59,8 @@ class PrettyPrinter(module: IrModule) {
                                     is IrModule.Instruction.Store -> "store %${insMap[it.value]} in %${insMap[it.ptr]}"
                                     is IrModule.Instruction.Load -> "load %${insMap[it.ptr]}"
                                     is IrModule.Instruction.FunctionCall -> "call %${insMap[it.function]}(${it.arguments.joinToString { "%${insMap[it]}" }})"
+                                    is IrModule.Instruction.MethodCall -> "callMethod %${insMap[it.aggregate]}.${it.methodName}(${it.arguments.joinToString { "%${insMap[it]}" }})"
+                                    is IrModule.Instruction.AddressOf -> "&%${insMap[it.value]}"
                                     else -> "$it"
                                 }
                             }"

@@ -198,6 +198,8 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
         data class Dereference(val ptr: Instruction) : Instruction()
         data class AddressOf(val value: Instruction) : Instruction()
         data class New(val struct: DeclarationRef) : Instruction()
+        data class MethodCall(val aggregate: Instruction, val methodName: String, val arguments: List<Instruction>) :
+            Instruction()
 
         sealed class BinaryOperator(open val lhs: Instruction, open val rhs: Instruction) : Instruction() {
             data class Add(override val lhs: Instruction, override val rhs: Instruction) : BinaryOperator(lhs, rhs)
@@ -205,6 +207,8 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
             data class Mul(override val lhs: Instruction, override val rhs: Instruction) : BinaryOperator(lhs, rhs)
             data class Div(override val lhs: Instruction, override val rhs: Instruction) : BinaryOperator(lhs, rhs)
         }
+
+        object This : Instruction()
 
     }
 }

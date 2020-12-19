@@ -132,6 +132,13 @@ class Translator(private val astModule: AstModule) {
                 val ret = IrModule.Instruction.Return(value)
                 blockBuilder.addInstruction(ret)
             }
+            is AstModule.Statement.MethodCall -> {
+                val aggregate = generateExpression(statement.aggregate, blockBuilder, lvt, context)
+                val arguments = statement.arguments.map { generateExpression(it, blockBuilder, lvt, context) }
+
+                val methodCall = IrModule.Instruction.MethodCall(aggregate, statement.methodName, arguments)
+                blockBuilder.addInstruction(methodCall)
+            }
         }
     }
 
@@ -201,6 +208,16 @@ class Translator(private val astModule: AstModule) {
                     }
                 }
             }
+            is AstModule.Expression.AddressOf -> {
+                val value = generateExpression(expression.value, blockBuilder, lvt, context)
+                IrModule.Instruction.AddressOf(value)
+            }
+            is AstModule.Expression.MethodCall -> {
+                val aggregate = generateExpression(expression.aggregate, blockBuilder, lvt, context)
+                val arguments = expression.arguments.map { generateExpression(it, blockBuilder, lvt, context) }
+                IrModule.Instruction.MethodCall(aggregate, expression.methodName, arguments)
+            }
+            is AstModule.Expression.This -> IrModule.Instruction.This
         }
         blockBuilder.addInstruction(instruction)
         return instruction

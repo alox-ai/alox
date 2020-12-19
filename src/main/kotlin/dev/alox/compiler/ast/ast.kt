@@ -86,6 +86,8 @@ data class AstModule(val path: Path, val name: String, val declarations: List<De
             Statement()
 
         data class Return(val value: Expression) : Statement()
+        data class MethodCall(val aggregate: Expression, val methodName: String, val arguments: List<Expression>) :
+            Statement()
     }
 
     sealed class Expression {
@@ -114,6 +116,13 @@ data class AstModule(val path: Path, val name: String, val declarations: List<De
         data class FunctionCall(val function: Expression, val arguments: List<Expression>) : Expression()
         data class GetField(val struct: Expression, val field: String) : Expression()
         data class New(val struct: TypeName) : Expression()
+        data class AddressOf(val value: Expression) : Expression()
+        data class MethodCall(val aggregate: Expression, val methodName: String, val arguments: List<Expression>) :
+            Expression()
+
+        object This : Expression() {
+            override fun toString(): String = "this"
+        }
     }
 
 }
