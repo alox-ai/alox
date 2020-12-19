@@ -124,7 +124,7 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
                 /**
                  * Go over primitive and builtin types and find one that matches, resolving type parameters that need it
                  */
-                fun fromReference(compiler: IrCompiler, declarationRef: DeclarationRef): Type? {
+                fun fromReference(compiler: IrCompiler, currentModule: IrModule, declarationRef: DeclarationRef): Type? {
                     if (declarationRef.path.path.isNotEmpty()) return null
                     return when (val name = declarationRef.name) {
                         "Int8" -> Primitive.Int8
@@ -146,15 +146,23 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
                             } else if (name.startsWith("Float")) {
                                 name.substring("Float".length).toIntOrNull()?.let { Primitive.FloatT(it) }
                             } else if (name == "Ref" && declarationRef.arguments.size == 1) {
-                                val type = compiler.resolve(declarationRef.arguments[0])
+                                val type = compiler.resolve(currentModule, declarationRef.arguments[0])
                                 if (type is Type) Ref(type) else null
                             } else if (name == "Array" && declarationRef.arguments.size == 1) {
-                                val type = compiler.resolve(declarationRef.arguments[0])
+                                val type = compiler.resolve(currentModule, declarationRef.arguments[0])
                                 if (type is Type) Array(type) else null
                             } else {
                                 null
                             }
                         }
+                    }
+                }
+
+                fun fromDeclaration(declaration: Declaration): Type {
+                    return when (declaration) {
+                        is Declaration.Function -> Function(declaration, mapOf())
+                        is Declaration.Struct -> Struct(declaration, mapOf())
+                        is Type -> declaration
                     }
                 }
             }

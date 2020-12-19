@@ -9,15 +9,22 @@ import dev.alox.compiler.ir.IrModule.*
  */
 class IrCompiler {
 
-    private val modules: List<IrModule> = Collections.synchronizedList(mutableListOf())
+    private val modules: MutableList<IrModule> = Collections.synchronizedList(mutableListOf())
+
+    fun addModule(irModule: IrModule) {
+        modules.add(irModule)
+    }
 
     /**
      * Resolve a declaration using a reference. This will fill in type parameters for defined and builtin types.
      */
-    fun resolve(declarationRef: DeclarationRef): Declaration? {
+    fun resolve(currentModule: IrModule, declarationRef: DeclarationRef): Declaration? {
         return if (declarationRef.path.path.isEmpty()) {
-            // ref doesn't contain a path so it's probably looking for a builtin type
-            Declaration.Type.fromReference(this, declarationRef)
+            // ref doesn't contain a path so it's probably looking for a type in the current module or a builtin type
+            currentModule.declarations
+                .firstOrNull { it.name == declarationRef.name }
+                ?.applyFrom(declarationRef)
+                ?: Declaration.Type.fromReference(this, currentModule, declarationRef)
         } else {
             // ref has a path so we know exactly where to find the declaration
             modules
