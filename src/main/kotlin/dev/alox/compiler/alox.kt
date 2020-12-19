@@ -4,6 +4,7 @@ import dev.alox.compiler.ast.AstModule
 import dev.alox.compiler.ast.Path
 import dev.alox.compiler.ir.PrettyPrinter
 import dev.alox.compiler.ir.Translator
+import dev.alox.compiler.parser.AstParser
 
 fun main(args: Array<String>) {
     println("Alox compiler")
@@ -14,6 +15,8 @@ fun main(args: Array<String>) {
     }
 
     fun foo(box: Box): Int32 {
+        let x: Int32 = 1
+        return 1
         return box.x
     }
      */
@@ -59,4 +62,30 @@ fun main(args: Array<String>) {
     val mainIrModule = Translator(mainModule).generateModule()
 
     PrettyPrinter(mainIrModule)
+
+    /*
+
+     */
+    val parsedModule = AstParser.parseModule(Path(listOf("alox")), "parsed", """
+struct Box {
+    let x : Int32
+}
+
+fun foo(box: Box): Int32 {
+    let x: Int32 = 1
+    return box
+}
+
+actor A {
+    let state : Int32
+
+    behave ping(n: Int32, b: B) {
+        (b.pong)(n, this)
+    }
+}
+    """.trimIndent())
+
+    val parsedIrModule = Translator(parsedModule).generateModule()
+
+    PrettyPrinter(parsedIrModule)
 }

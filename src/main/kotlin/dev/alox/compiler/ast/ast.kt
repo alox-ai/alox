@@ -62,6 +62,15 @@ data class AstModule(val path: Path, val name: String, val declarations: List<De
                 KERNEL;
 
                 fun toIr(): IrModule.Declaration.Function.Kind = IrModule.Declaration.Function.Kind.valueOf(this.name)
+
+                companion object {
+                    fun from(value: String): Kind = when (value) {
+                        "fun" -> FUNCTION
+                        "behave" -> BEHAVIOR
+                        "kernel" -> KERNEL
+                        else -> throw IllegalArgumentException("$value is not a Function Kind")
+                    }
+                }
             }
 
             data class Argument(val name: String, val typeName: TypeName)
@@ -93,15 +102,15 @@ data class AstModule(val path: Path, val name: String, val declarations: List<De
         }
 
         data class BinaryOperator(val kind: Kind, val lhs: Expression, val rhs: Expression) : Expression() {
-            enum class Kind(val char: Char) {
-                ADD('+'),
-                SUBTRACT('-'),
-                MULTIPLY('*'),
-                DIVIDE('/'),
+            enum class Kind(val op: String) {
+                ADD("+"),
+                SUBTRACT("-"),
+                MULTIPLY("*"),
+                DIVIDE("/"),
             }
         }
 
-        data class VariableReference(val path: Path?, val name: String) : Expression()
+        data class VariableReference(val path: Path, val name: String) : Expression()
         data class FunctionCall(val function: Expression, val arguments: List<Expression>) : Expression()
         data class GetField(val struct: Expression, val field: String) : Expression()
         data class New(val struct: TypeName) : Expression()

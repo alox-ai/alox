@@ -55,7 +55,7 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
         ) : Declaration(name) {
             enum class Kind {
                 FUNCTION,
-                BEHAVIOUR,
+                BEHAVIOR,
                 KERNEL;
 
                 fun toAst(): AstModule.Declaration.Function.Kind =
@@ -167,7 +167,8 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
     data class DeclarationRef(val path: Path, val name: String, val arguments: List<DeclarationRef> = listOf()) {
         // path::Name[arg, arg]
         override fun toString(): String =
-            "$path$name${if (arguments.isEmpty()) "" else "[${arguments.joinToString(", ")}]"}"
+            "${if (path.path.isEmpty()) "" else "$path::"}$name" +
+                    if (arguments.isEmpty()) "" else "[${arguments.joinToString(", ")}]"
     }
 
     /**

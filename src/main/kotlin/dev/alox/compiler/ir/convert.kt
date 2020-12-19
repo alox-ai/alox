@@ -161,7 +161,7 @@ class Translator(private val astModule: AstModule) {
                 IrModule.Instruction.GetField(struct, expression.field)
             }
             is AstModule.Expression.VariableReference -> {
-                if (expression.path != null) {
+                if (expression.path.path.isNotEmpty()) {
                     // this is a declaration to something in a module
                     val declarationId = IrModule.DeclarationRef(expression.path, expression.name)
                     IrModule.Instruction.DeclarationReference(declarationId)
@@ -236,6 +236,10 @@ class BlockBuilder {
 @OptIn(ExperimentalStdlibApi::class)
 class LocalVariableTable {
     private val table: ArrayDeque<MutableMap<String, IrModule.Instruction>> = ArrayDeque()
+
+    init {
+        pushDepth()
+    }
 
     fun pushDepth() = table.addLast(mutableMapOf())
 

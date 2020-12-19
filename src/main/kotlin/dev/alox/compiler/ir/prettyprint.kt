@@ -12,6 +12,7 @@ class PrettyPrinter(module: IrModule) {
     private fun p(s: String = "") = println("${prefix()}$s")
 
     init {
+        p("; Alox Module ${module.name}")
         module.declarations.forEach { prettyPrint(it) }
     }
 
@@ -46,9 +47,15 @@ class PrettyPrinter(module: IrModule) {
                         p(
                             "%$id = ${
                                 when (it) {
-                                    is IrModule.Instruction.DeclarationReference -> "getparam %${it.declarationRef}"
+                                    is IrModule.Instruction.IntegerLiteral -> "$${it.value}"
+                                    is IrModule.Instruction.GetParameter -> "getparam %${it.name}"
+                                    is IrModule.Instruction.DeclarationReference -> "%${it.declarationRef}"
                                     is IrModule.Instruction.GetField -> "getfield %${insMap[it.aggregate]} \"${it.field}\""
                                     is IrModule.Instruction.Return -> "ret %${insMap[it.value]}"
+                                    is IrModule.Instruction.Alloca -> "alloca ${it.declarationRef}"
+                                    is IrModule.Instruction.Store -> "store %${insMap[it.value]} in %${insMap[it.ptr]}"
+                                    is IrModule.Instruction.Load -> "load %${insMap[it.ptr]}"
+                                    is IrModule.Instruction.FunctionCall -> "call %${insMap[it.function]}(${it.arguments.joinToString { "%${insMap[it]}" }})"
                                     else -> "$it"
                                 }
                             }"
@@ -56,6 +63,7 @@ class PrettyPrinter(module: IrModule) {
                     }
                     indent--
                 }
+                indent--
             }
             is IrModule.Declaration.Type -> {
                 print("type $declaration")
