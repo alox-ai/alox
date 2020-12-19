@@ -92,9 +92,19 @@ data class AstModule(val path: Path, val name: String, val declarations: List<De
             fun toIr(): IrModule.Instruction.FloatLiteral = IrModule.Instruction.FloatLiteral(value)
         }
 
+        data class BinaryOperator(val kind: Kind, val lhs: Expression, val rhs: Expression) : Expression() {
+            enum class Kind(val char: Char) {
+                ADD('+'),
+                SUBTRACT('-'),
+                MULTIPLY('*'),
+                DIVIDE('/'),
+            }
+        }
+
         data class VariableReference(val path: Path?, val name: String) : Expression()
         data class FunctionCall(val function: Expression, val arguments: List<Expression>) : Expression()
         data class GetField(val struct: Expression, val field: String) : Expression()
+        data class New(val struct: TypeName) : Expression()
     }
 
 }

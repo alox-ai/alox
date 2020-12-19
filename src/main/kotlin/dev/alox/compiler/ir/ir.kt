@@ -175,11 +175,15 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
      */
     data class Block(val id: Int, val instructions: MutableList<Instruction> = mutableListOf())
 
+    /**
+     * An SSA instruction
+     */
     sealed class Instruction {
+
         data class Unreachable(val reason: String) : Instruction()
         data class Load(val ptr: Instruction) : Instruction()
         data class Store(val ptr: Instruction, val value: Instruction) : Instruction()
-        data class Allocate(val name: String, val declarationRef: DeclarationRef) : Instruction()
+        data class Alloca(val name: String, val declarationRef: DeclarationRef) : Instruction()
         data class BooleanLiteral(val value: Boolean) : Instruction()
         data class IntegerLiteral(val value: Long) : Instruction()
         data class FloatLiteral(val value: Double) : Instruction()
@@ -192,5 +196,14 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
         data class Branch(val condition: Instruction, val trueBlock: Block, val falseBlock: Block) : Instruction()
         data class Dereference(val ptr: Instruction) : Instruction()
         data class AddressOf(val value: Instruction) : Instruction()
+        data class New(val struct: DeclarationRef) : Instruction()
+
+        sealed class BinaryOperator(open val lhs: Instruction, open val rhs: Instruction) : Instruction() {
+            data class Add(override val lhs: Instruction, override val rhs: Instruction) : BinaryOperator(lhs, rhs)
+            data class Sub(override val lhs: Instruction, override val rhs: Instruction) : BinaryOperator(lhs, rhs)
+            data class Mul(override val lhs: Instruction, override val rhs: Instruction) : BinaryOperator(lhs, rhs)
+            data class Div(override val lhs: Instruction, override val rhs: Instruction) : BinaryOperator(lhs, rhs)
+        }
+
     }
 }

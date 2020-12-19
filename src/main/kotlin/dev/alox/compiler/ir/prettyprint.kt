@@ -46,7 +46,7 @@ class PrettyPrinter(module: IrModule) {
                         p(
                             "%$id = ${
                                 when (it) {
-                                    is IrModule.Instruction.DeclarationReference -> "%${it.declarationRef}"
+                                    is IrModule.Instruction.DeclarationReference -> "getparam %${it.declarationRef}"
                                     is IrModule.Instruction.GetField -> "getfield %${insMap[it.aggregate]} \"${it.field}\""
                                     is IrModule.Instruction.Return -> "ret %${insMap[it.value]}"
                                     else -> "$it"

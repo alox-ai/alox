@@ -7,7 +7,7 @@ import kotlin.collections.ArrayDeque
 /**
  * Handles translation from AST to IR
  */
-class Translator(val astModule: AstModule) {
+class Translator(private val astModule: AstModule) {
 
     private val path: Path = astModule.path.append(astModule.name)
 
@@ -71,7 +71,7 @@ class Translator(val astModule: AstModule) {
         when (statement) {
             is AstModule.Statement.VariableDeclaration -> {
                 // allocate space for the variable
-                val allocate = IrModule.Instruction.Allocate(statement.name, statement.type.toIr())
+                val allocate = IrModule.Instruction.Alloca(statement.name, statement.type.toIr())
                 blockBuilder.addInstruction(allocate)
                 lvt[statement.name] = allocate
             }
@@ -89,7 +89,7 @@ class Translator(val astModule: AstModule) {
                 val value = generateExpression(statement.value, blockBuilder, lvt, context)
 
                 // allocate space for the variable
-                val allocate = IrModule.Instruction.Allocate(statement.name, statement.type.toIr())
+                val allocate = IrModule.Instruction.Alloca(statement.name, statement.type.toIr())
                 blockBuilder.addInstruction(allocate)
                 lvt[statement.name] = allocate
 
@@ -182,6 +182,25 @@ class Translator(val astModule: AstModule) {
                     }
                 }
             }
+            is AstModule.Expression.New -> IrModule.Instruction.New(expression.struct.toIr())
+            is AstModule.Expression.BinaryOperator -> {
+                val lhs = generateExpression(expression.lhs, blockBuilder, lvt, context)
+                val rhs = generateExpression(expression.rhs, blockBuilder, lvt, context)
+                when (expression.kind) {
+                    AstModule.Expression.BinaryOperator.Kind.ADD -> {
+                        IrModule.Instruction.BinaryOperator.Add(lhs, rhs)
+                    }
+                    AstModule.Expression.BinaryOperator.Kind.SUBTRACT -> {
+                        IrModule.Instruction.BinaryOperator.Sub(lhs, rhs)
+                    }
+                    AstModule.Expression.BinaryOperator.Kind.MULTIPLY -> {
+                        IrModule.Instruction.BinaryOperator.Mul(lhs, rhs)
+                    }
+                    AstModule.Expression.BinaryOperator.Kind.DIVIDE -> {
+                        IrModule.Instruction.BinaryOperator.Div(lhs, rhs)
+                    }
+                }
+            }
         }
         blockBuilder.addInstruction(instruction)
         return instruction
@@ -192,7 +211,7 @@ class Translator(val astModule: AstModule) {
 /**
  * Handles the creation and management of blocks
  */
-class BlockBuilder() {
+class BlockBuilder {
     val blocks = mutableListOf<IrModule.Block>()
     var currentBlock: IrModule.Block = IrModule.Block(0)
 
