@@ -11,6 +11,7 @@ fun main(args: Array<String>) {
     val parsedModule = AstParser.parseModule(Path(listOf("alox")), "parsed", """
 struct Box {
     let x : Int32
+    let y : Int32
 }
 
 fun bar(): Int32 {
@@ -24,6 +25,10 @@ fun foo(box: Ref[Box]): Int32 {
 
 fun baz(box: Box): Int32 {
     return box.x
+}
+
+fun foo2(box: Ref[Ref[Box]]): Int32 {
+    return box.y
 }
 
 fun qux(box: Ref[Box]): Int32 {

@@ -237,7 +237,7 @@ object AstParser : Grammar<List<Declaration>>() {
             by -LET and name and -COLON and typeName map { Declaration.Struct.Field(it.t1, it.t2) }
 
     private val fieldList: Parser<List<Declaration.Struct.Field>>
-            by separatedTerms(field, NEWLINE, acceptZero = true)
+            by zeroOrMore(field)
 
     private val struct: Parser<Declaration.Struct>
             by structKind and name and

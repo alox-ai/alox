@@ -216,22 +216,12 @@ class LLVMBackend(private val compiler: IrCompiler, private val irModule: IrModu
                     is IrModule.Instruction.FloatLiteral -> null
                     is IrModule.Instruction.GetParameter -> {
                         val arg = function.arguments.withIndex().first { it.value.name == ins.name }
-                        val argType = arg.value.declarationRef.toType()
-                        val isPointer = argType is IrModule.Declaration.Type.Ref
                         var index = arg.index
                         // if there's a parent struct, the function's first argument is the struct
                         if (parentStruct != null) {
                             index++
                         }
-                        val getParam = LLVMGetParam(llvmFunction, index)
-                        if (!isPointer) {
-                            // the param is not a pointer so we want to store it in an alloca
-                            val alloca = LLVMBuildAlloca(builder, LLVMTypeOf(getParam), "")
-                            LLVMBuildStore(builder, getParam, alloca)
-                            alloca
-                        } else {
-                            getParam
-                        }
+                        LLVMGetParam(llvmFunction, index)
                     }
                     is IrModule.Instruction.DeclarationReference -> {
                         // todo: support declarations outside module
@@ -261,13 +251,14 @@ class LLVMBackend(private val compiler: IrCompiler, private val irModule: IrModu
                                 .firstOrNull { it.value.name == ins.field }?.index ?: -2
                         } else -1
 
-//                        if (aggregateType is IrModule.Declaration.Type.Ref) {
+                        if (aggregateType is IrModule.Declaration.Type.Ref) {
                             // build the pointer and load the value
-                            val gep = LLVMBuildStructGEP(builder, aggregate, index, "")
+                            val gep = LLVMBuildStructGEP2(builder, getType(innerType!!), aggregate, index, "")
                             LLVMBuildLoad(builder, gep, "")
-//                        } else {
-//                            LLVMBuildExtractElement(builder, aggregate, LLVMConstInt(LLVMInt32TypeInContext(context), index.toLong(), 0), "")
-//                        }
+                        } else {
+                            // extract the value directly
+                            LLVMBuildExtractValue(builder, aggregate, index, "")
+                        }
                     }
                     is IrModule.Instruction.Return -> {
                         val value = insMap[ins.value]
