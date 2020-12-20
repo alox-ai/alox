@@ -8,37 +8,6 @@ import dev.alox.compiler.ir.Translator
 import dev.alox.compiler.parser.AstParser
 
 fun main(args: Array<String>) {
-    val parsedModule1 = AstParser.parseModule(Path(listOf("alox")), "parsed", """
-struct Box {
-    let x : Int32
-}
-
-fun bar(): Int32 {
-    let x: Int32 = 1
-    return x
-}
-
-fun foo(box: Box): Int32 {
-    return box.x
-}
-
-actor A {
-    let state: Int32
-
-    behave ping(n: Int32, b: Ref[B]) {
-        b.pong(n, &this)
-    }
-}
-
-actor B {
-    let state: Int32
-    
-    behave pong(n: Int32, a: Ref[A]) {
-        a.ping(n, &this)
-    }
-}
-    """.trimIndent())
-
     val parsedModule = AstParser.parseModule(Path(listOf("alox")), "parsed", """
 struct Box {
     let x : Int32
@@ -56,12 +25,11 @@ fun foo(box: Box): Int32 {
 actor A {
     let state: Int32
 
-}
-
-
     behave ping(n: Int32, b: Ref[B]) {
         b.pong(n, &this)
     }
+}
+
 
 actor B {
     let state: Int32

@@ -189,7 +189,6 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
      */
     sealed class Instruction {
 
-        data class Unreachable(val reason: String) : Instruction()
         data class Load(val ptr: Instruction) : Instruction()
         data class Store(val ptr: Instruction, val value: Instruction) : Instruction()
         data class Alloca(val name: String, val declarationRef: DeclarationRef) : Instruction()
