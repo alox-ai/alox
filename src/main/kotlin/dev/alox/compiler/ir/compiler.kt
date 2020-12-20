@@ -28,7 +28,9 @@ class IrCompiler {
         } else {
             // ref has a path so we know exactly where to find the declaration
             modules
-                .firstOrNull { it.path == declarationRef.path }
+                .firstOrNull {
+                    it.path.append(it.name) == declarationRef.path
+                }
                 ?.declarations?.firstOrNull { it.name == declarationRef.name }
                 ?.applyFrom(declarationRef)
         }

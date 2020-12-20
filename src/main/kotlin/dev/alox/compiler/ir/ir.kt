@@ -124,7 +124,11 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
                 /**
                  * Go over primitive and builtin types and find one that matches, resolving type parameters that need it
                  */
-                fun fromReference(compiler: IrCompiler, currentModule: IrModule, declarationRef: DeclarationRef): Type? {
+                fun fromReference(
+                    compiler: IrCompiler,
+                    currentModule: IrModule,
+                    declarationRef: DeclarationRef
+                ): Type? {
                     if (declarationRef.path.path.isNotEmpty()) return null
                     return when (val name = declarationRef.name) {
                         "Int8" -> Primitive.Int8
@@ -206,7 +210,29 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
         data class AddressOf(val value: Instruction) : Instruction()
         data class New(val struct: DeclarationRef) : Instruction()
         data class MethodCall(val aggregate: Instruction, val methodName: String, val arguments: List<Instruction>) :
-            Instruction()
+            Instruction() {
+
+            /**
+             * Get the method declaration given the context
+             */
+            fun getMethod(
+                compiler: IrCompiler,
+                currentModule: IrModule,
+                currentFunction: Declaration.Function,
+                parentStruct: Declaration.Struct? = null
+            ): Declaration.Function? {
+                var outerType = aggregate.getType(compiler, currentModule, currentFunction, parentStruct)
+                while(outerType is Declaration.Type.Ref) {
+                    outerType = outerType.inner
+                }
+                val structType = outerType
+                    ?.let { if (it is Declaration.Type.Struct) it else null }
+                return structType
+                    ?.declaration?.declarations
+                    ?.firstOrNull { it.name == this.methodName }
+                    ?.let { if (it is Declaration.Function) it else null }
+            }
+        }
 
         sealed class BinaryOperator(open val lhs: Instruction, open val rhs: Instruction) : Instruction() {
             data class Add(override val lhs: Instruction, override val rhs: Instruction) : BinaryOperator(lhs, rhs)
@@ -217,5 +243,63 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
 
         object This : Instruction()
 
+        /**
+         * Get the Type of this instruction based on the context
+         */
+        fun getType(
+            compiler: IrCompiler,
+            currentModule: IrModule,
+            currentFunction: Declaration.Function,
+            parentStruct: Declaration.Struct? = null
+        ): Declaration.Type? {
+            return when (this) {
+                is Load -> this.ptr.getType(compiler, currentModule, currentFunction, parentStruct)
+                is Store -> Declaration.Type.Primitive.Void
+                is Alloca -> compiler.resolve(currentModule, this.declarationRef)
+                    ?.let { if (it is Declaration.Type) it else null }
+                is BooleanLiteral -> Declaration.Type.Primitive.Bool
+                is IntegerLiteral -> Declaration.Type.Primitive.Int32
+                is FloatLiteral -> Declaration.Type.Primitive.Float32
+                is GetParameter -> {
+                    currentFunction.arguments.firstOrNull { it.name == this.name }
+                        ?.let { compiler.resolve(currentModule, it.declarationRef) }
+                        ?.let { if (it is Declaration.Type) it else null }
+                }
+                is DeclarationReference -> compiler.resolve(currentModule, this.declarationRef)
+                    ?.let { if (it is Declaration.Type) it else null }
+                is FunctionCall -> {
+                    this.function.getType(compiler, currentModule, currentFunction, parentStruct)
+                        ?.let { if (it is Declaration.Type.Function) it else null }
+                        ?.let { compiler.resolve(currentModule, it.declaration.returnType) }
+                        ?.let { if (it is Declaration.Type) it else null }
+                }
+                is GetField -> {
+                    this.aggregate.getType(compiler, currentModule, currentFunction, parentStruct)
+                        ?.let { if (it is Declaration.Type.Struct) it else null }
+                        ?.let { it.declaration.fields.firstOrNull { it.name == this.field }?.declarationRef }
+                        ?.let { compiler.resolve(currentModule, it) }
+                        ?.let { if (it is Declaration.Type) it else null }
+                }
+                is Return -> Declaration.Type.Primitive.Void
+                is Jump -> Declaration.Type.Primitive.Void
+                is Branch -> Declaration.Type.Primitive.Void
+                is Dereference -> TODO()
+                is AddressOf -> TODO()
+                is New -> TODO()
+                is MethodCall -> TODO()
+                is BinaryOperator.Add -> Declaration.Type.Primitive.Int32
+                is BinaryOperator.Sub -> Declaration.Type.Primitive.Int32
+                is BinaryOperator.Mul -> Declaration.Type.Primitive.Int32
+                is BinaryOperator.Div -> Declaration.Type.Primitive.Int32
+                This -> parentStruct?.let {
+                    Declaration.Type.Ref(
+                        Declaration.Type.Struct(
+                            it,
+                            mapOf()/*TODO generics*/
+                        )
+                    )
+                }
+            }
+        }
     }
 }

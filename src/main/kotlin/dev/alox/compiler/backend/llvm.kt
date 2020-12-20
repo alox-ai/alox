@@ -52,8 +52,7 @@ class LLVMBackend(private val compiler: IrCompiler, private val irModule: IrModu
             }
             is IrModule.Declaration.Type.Function -> {
                 val argTypes = type.declaration.arguments
-                    .map { arg -> compiler.resolve(irModule, arg.declarationRef) }
-                    .filterIsInstance(IrModule.Declaration.Type::class.java)
+                    .mapNotNull { it.declarationRef.toType() }
                     .toMutableList()
                 if (parent != null) {
                     argTypes.add(0, parent)
@@ -65,9 +64,7 @@ class LLVMBackend(private val compiler: IrCompiler, private val irModule: IrModu
                         .toTypedArray()
                 )
 
-                val returnType = compiler.resolve(irModule, type.declaration.returnType)
-                    ?.takeIf { it is IrModule.Declaration.Type }
-                    ?.let { it as IrModule.Declaration.Type }
+                val returnType = type.declaration.returnType.toType()
                     ?.let { getType(it) }
 
                 LLVMFunctionType(returnType, llvmArgTypes, argTypes.size, 0)
@@ -78,8 +75,7 @@ class LLVMBackend(private val compiler: IrCompiler, private val irModule: IrModu
 
                 // convert the fields to LLVMTypeRefs by resolving them using the compiler and converting them
                 // TODO: support type parameters
-                val fieldTypes = struct.fields.map { compiler.resolve(irModule, it.declarationRef) }
-                    .filterIsInstance(IrModule.Declaration.Type::class.java)
+                val fieldTypes = struct.fields.mapNotNull { it.declarationRef.toType() }
 
                 val fields = PointerPointer<LLVMTypeRef>(
                     *fieldTypes.map { getType(it) }.toTypedArray()
@@ -176,7 +172,7 @@ class LLVMBackend(private val compiler: IrCompiler, private val irModule: IrModu
                 processFunction(declaration, llvmValueRef!!, llvmTypeRef, parentStruct)
             }
             is IrModule.Declaration.Struct -> {
-
+                declaration.declarations.forEach { processDeclaration(it, declaration) }
             }
         }
     }
@@ -219,22 +215,59 @@ class LLVMBackend(private val compiler: IrCompiler, private val irModule: IrModu
                     }
                     is IrModule.Instruction.FloatLiteral -> null
                     is IrModule.Instruction.GetParameter -> {
-                        var index = function.arguments.withIndex()
-                            .filter { it.value.name == ins.name }
-                            .map { it.index }
-                            .first()
+                        val arg = function.arguments.withIndex().first { it.value.name == ins.name }
+                        val argType = arg.value.declarationRef.toType()
+                        val isPointer = argType is IrModule.Declaration.Type.Ref
+                        var index = arg.index
                         // if there's a parent struct, the function's first argument is the struct
                         if (parentStruct != null) {
                             index++
                         }
-                        LLVMGetParam(llvmFunction, index)
+                        val getParam = LLVMGetParam(llvmFunction, index)
+                        if (!isPointer) {
+                            // the param is not a pointer so we want to store it in an alloca
+                            val alloca = LLVMBuildAlloca(builder, LLVMTypeOf(getParam), "")
+                            LLVMBuildStore(builder, getParam, alloca)
+                            alloca
+                        } else {
+                            getParam
+                        }
                     }
-                    is IrModule.Instruction.DeclarationReference -> null
-                    is IrModule.Instruction.FunctionCall -> null
+                    is IrModule.Instruction.DeclarationReference -> {
+                        // todo: support declarations outside module
+                        ins.declarationRef.resolve()
+                            ?.let { if (it is IrModule.Declaration.Type.Struct) it.declaration else it }
+                            ?.let { if (it is IrModule.Declaration.Type.Function) it.declaration else it }
+                            ?.let { declarationCache[it]?.first }
+                    }
+                    is IrModule.Instruction.FunctionCall -> {
+                        val func = insMap[ins.function]
+                        val args = ins.arguments.map { insMap[it] }
+                        val argPtr = PointerPointer<LLVMValueRef>(*args.toTypedArray())
+                        LLVMBuildCall(builder, func, argPtr, args.size, "")
+                    }
                     is IrModule.Instruction.GetField -> {
+                        // get the inner aggregate type
                         val aggregate = insMap[ins.aggregate]
-                        val aggregateType = LLVMTypeOf(aggregate)
-                        null
+                        val aggregateType = ins.aggregate.getType(function, parentStruct)
+                        var innerType = aggregateType
+                        while (innerType is IrModule.Declaration.Type.Ref) {
+                            innerType = innerType.inner
+                        }
+
+                        // get the index of the field within the struct
+                        val index = if (innerType is IrModule.Declaration.Type.Struct) {
+                            innerType.declaration.fields.withIndex()
+                                .firstOrNull { it.value.name == ins.field }?.index ?: -2
+                        } else -1
+
+//                        if (aggregateType is IrModule.Declaration.Type.Ref) {
+                            // build the pointer and load the value
+                            val gep = LLVMBuildStructGEP(builder, aggregate, index, "")
+                            LLVMBuildLoad(builder, gep, "")
+//                        } else {
+//                            LLVMBuildExtractElement(builder, aggregate, LLVMConstInt(LLVMInt32TypeInContext(context), index.toLong(), 0), "")
+//                        }
                     }
                     is IrModule.Instruction.Return -> {
                         val value = insMap[ins.value]
@@ -252,7 +285,20 @@ class LLVMBackend(private val compiler: IrCompiler, private val irModule: IrModu
                     is IrModule.Instruction.Dereference -> null
                     is IrModule.Instruction.AddressOf -> null
                     is IrModule.Instruction.New -> null
-                    is IrModule.Instruction.MethodCall -> null
+                    is IrModule.Instruction.MethodCall -> {
+                        // get the llvm function for this method
+                        val method: IrModule.Declaration.Function =
+                            ins.getMethod(compiler, irModule, function, parentStruct)!!
+                        val func = declarationCache[method]?.first
+
+                        // build the args and append the struct to the beginning
+                        val args = ins.arguments.map { insMap[it] }.toMutableList()
+                        val aggregate = insMap[ins.aggregate]
+                        args.add(0, aggregate)
+                        val argPtr = PointerPointer<LLVMValueRef>(*args.toTypedArray())
+
+                        LLVMBuildCall(builder, func, argPtr, args.size, "")
+                    }
                     is IrModule.Instruction.BinaryOperator.Add -> null
                     is IrModule.Instruction.BinaryOperator.Sub -> null
                     is IrModule.Instruction.BinaryOperator.Mul -> null
@@ -269,4 +315,17 @@ class LLVMBackend(private val compiler: IrCompiler, private val irModule: IrModu
     fun dump() {
         LLVMDumpModule(llvmModule)
     }
+
+    // useful extension functions
+
+    private fun IrModule.Instruction.getType(
+        currentFunction: IrModule.Declaration.Function,
+        parent: IrModule.Declaration.Struct? = null
+    ) = getType(compiler, irModule, currentFunction, parent)
+
+    private fun IrModule.DeclarationRef.resolve(): IrModule.Declaration? = compiler.resolve(irModule, this)
+
+    private fun IrModule.DeclarationRef.toType(): IrModule.Declaration.Type? =
+        compiler.resolve(irModule, this)
+            ?.let { if (it is IrModule.Declaration.Type) it else null }
 }

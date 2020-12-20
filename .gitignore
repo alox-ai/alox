@@ -1,3 +1,4 @@
 build/
 .gradle/
 .idea/
+hs_err*.log

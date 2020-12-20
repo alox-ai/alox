@@ -18,15 +18,23 @@ fun bar(): Int32 {
     return x
 }
 
-fun foo(box: Box): Int32 {
+fun foo(box: Ref[Box]): Int32 {
     return box.x
+}
+
+fun baz(box: Box): Int32 {
+    return box.x
+}
+
+fun qux(box: Ref[Box]): Int32 {
+    return foo(box)
 }
 
 actor A {
     let state: Int32
 
     behave ping(n: Int32, b: Ref[B]) {
-        b.pong(n, &this)
+        b.pong(n, this)
     }
 }
 
@@ -35,7 +43,7 @@ actor B {
     let state: Int32
     
     behave pong(n: Int32, a: Ref[A]) {
-        a.ping(n, &this)
+        a.ping(n, this)
     }
 }
     """.trimIndent())
