@@ -5,10 +5,13 @@ import dev.alox.compiler.backend.LLVMBackend
 import dev.alox.compiler.ir.IrCompiler
 import dev.alox.compiler.ir.PrettyPrinter
 import dev.alox.compiler.ir.Translator
+import dev.alox.compiler.ir.pass.SemanticAnalysis
+import dev.alox.compiler.ir.pass.applyPasses
 import dev.alox.compiler.parser.AstParser
 
 fun main(args: Array<String>) {
-    val parseResult = AstParser.parseModule(Path(listOf("alox")), "parsed", """
+    val parseResult = AstParser.parseModule(
+        Path(listOf("alox")), "parsed", """
 struct Box {
     let x : Int32
     let y : Int32
@@ -66,7 +69,8 @@ actor B {
         a.ping(n, this)
     }
 }
-    """.trimIndent())
+    """.trimIndent()
+    )
 
     if (parseResult is Either.Error) {
         println(parseResult.error.toString())
@@ -75,6 +79,12 @@ actor B {
     val parsedModule = (parseResult as Either.Value).value
 
     val parsedIrModule = Translator(parsedModule).generateModule()
+
+    val diagnostics = applyPasses(parsedIrModule, listOf(SemanticAnalysis))
+    if (diagnostics.isNotEmpty()) {
+        diagnostics.forEach { println(it) }
+        return
+    }
 
     PrettyPrinter(parsedIrModule)
 

@@ -1,6 +1,7 @@
 package dev.alox.compiler.ast
 
 import dev.alox.compiler.ir.IrModule
+import dev.alox.compiler.report.SourceLocation
 
 data class Path(val path: List<String> = listOf()) {
     fun append(name: String) = Path(path.toMutableList().apply { add(name) })
@@ -15,7 +16,7 @@ data class Path(val path: List<String> = listOf()) {
 /**
  * AST representation of a module containing code
  */
-data class AstModule(val path: Path, val name: String, val declarations: List<Declaration>) {
+data class AstModule(val path: Path, val name: String, val declarations: List<Declaration>, val source: String) {
 
     /**
      * A reference to a Type that is later resolved to the real type
@@ -24,7 +25,7 @@ data class AstModule(val path: Path, val name: String, val declarations: List<De
         fun toIr(): IrModule.DeclarationRef = IrModule.DeclarationRef(path, name, arguments.map { it.toIr() })
     }
 
-    sealed class Declaration {
+    sealed class Declaration(open val sourceLocation: SourceLocation) {
         /**
          * A struct or actor
          */
@@ -33,8 +34,9 @@ data class AstModule(val path: Path, val name: String, val declarations: List<De
             val kind: Kind,
             val typeParameters: List<String>,
             val fields: List<Field>,
-            val declarations: List<Declaration>
-        ) : Declaration() {
+            val declarations: List<Declaration>,
+            override val sourceLocation: SourceLocation
+        ) : Declaration(sourceLocation) {
             enum class Kind {
                 STRUCT,
                 ACTOR;
@@ -54,8 +56,9 @@ data class AstModule(val path: Path, val name: String, val declarations: List<De
             val typeParameters: List<String>,
             val arguments: List<Argument>,
             val statements: List<Statement>,
-            val returnType: TypeName
-        ) : Declaration() {
+            val returnType: TypeName,
+            override val sourceLocation: SourceLocation
+        ) : Declaration(sourceLocation) {
             enum class Kind {
                 FUNCTION,
                 BEHAVIOR,

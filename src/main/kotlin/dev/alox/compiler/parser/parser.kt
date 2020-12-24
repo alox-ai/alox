@@ -8,6 +8,7 @@ import com.github.h0tk3y.betterParse.lexer.literalToken
 import com.github.h0tk3y.betterParse.lexer.regexToken
 import com.github.h0tk3y.betterParse.parser.*
 import com.github.h0tk3y.betterParse.grammar.tryParseToEnd
+import com.github.h0tk3y.betterParse.lexer.TokenMatchesSequence
 import dev.alox.compiler.Either
 import dev.alox.compiler.ast.AstModule
 import dev.alox.compiler.ast.AstModule.*
@@ -219,7 +220,7 @@ object AstParser : Grammar<List<Declaration>>() {
             by separatedTerms(argument, COMMA, acceptZero = true)
 
     private val function
-            by functionKind and name and
+            by loc { loc -> functionKind and name and
                     // generics
                     optional(-LEFT_BRACKET and separatedTerms(name, COMMA) and -LEFT_BRACKET) and
                     // args and body
@@ -230,9 +231,10 @@ object AstParser : Grammar<List<Declaration>>() {
                     it.t3.orEmpty(),
                     it.t4,
                     it.t6,
-                    it.t5 ?: TypeName(Path.empty, "Void", listOf())
+                    it.t5 ?: TypeName(Path.empty, "Void", listOf()),
+                    loc
                 )
-            }
+            } }
 
     private val structKind: Parser<Declaration.Struct.Kind>
             by (STRUCT or ACTOR) map { Declaration.Struct.Kind.valueOf(it.text.toUpperCase()) }
@@ -244,13 +246,12 @@ object AstParser : Grammar<List<Declaration>>() {
             by zeroOrMore(field)
 
     private val struct: Parser<Declaration.Struct>
-            by structKind and name and
+            by loc {loc -> structKind and name and
                     // generics
                     optional(-LEFT_BRACKET and separatedTerms(name, COMMA) and -LEFT_BRACKET) and
                     -LEFT_BRACE and fieldList and zeroOrMore(function) and -RIGHT_BRACE map {
-                Declaration.Struct(it.t2, it.t1, it.t3.orEmpty(), it.t4, it.t5)
-            }
-
+                Declaration.Struct(it.t2, it.t1, it.t3.orEmpty(), it.t4, it.t5, loc)
+            } }
 
     private val declaration: Parser<Declaration>
             by function or struct
@@ -261,21 +262,31 @@ object AstParser : Grammar<List<Declaration>>() {
     // END PARSING //
 
     fun parseModule(path: Path, name: String, source: String): Either<Diagnostic, AstModule> {
-        try {
+        return try {
             val declarations = AstParser.tryParseToEnd(source).toParsedOrThrow().value
-            val module = AstModule(path, name, declarations)
-            return Either.Value(module)
+            val module = AstModule(path, name, declarations, source)
+            Either.Value(module)
         } catch (e: ParseException) {
             val labels = e.errorResult.toLabel(source)
             val diagnostic =
                 Diagnostic(Diagnostic.Severity.ERROR, "Failed to parse module $name", labels.toMutableList())
-            return Either.Error(diagnostic)
+            Either.Error(diagnostic)
         }
     }
 
 }
 
 // helper functions for better-parse
+
+internal class LocationPreservingParser<T>(val parser: (SourceLocation) -> Parser<T>) : Parser<T> {
+    override fun tryParse(tokens: TokenMatchesSequence, fromPosition: Int): ParseResult<T> =
+        parser(tokens.getNotIgnored(fromPosition)?.toSourceLocation() ?: SourceLocation(0, 0, 0)).tryParse(
+            tokens,
+            fromPosition
+        )
+}
+
+fun <T> loc(parser: (SourceLocation) -> Parser<T>): Parser<T> = LocationPreservingParser(parser)
 
 fun TokenMatch.toSourceLocation(): SourceLocation = SourceLocation(row - 1, offset, length)
 

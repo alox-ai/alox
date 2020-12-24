@@ -16,7 +16,7 @@ class Translator(private val astModule: AstModule) {
      */
     fun generateModule(): IrModule {
         val declarations = astModule.declarations.map { generateDeclaration(it) }
-        return IrModule(astModule.path, astModule.name, declarations)
+        return IrModule(astModule.path, astModule.name, declarations, astModule.source)
     }
 
     /**
@@ -41,7 +41,8 @@ class Translator(private val astModule: AstModule) {
                     astDeclaration.typeParameters,
                     arguments,
                     blockBuilder.blocks,
-                    returnType
+                    returnType,
+                    astDeclaration.sourceLocation
                 )
             }
             is AstModule.Declaration.Struct -> {
@@ -53,7 +54,8 @@ class Translator(private val astModule: AstModule) {
                     astDeclaration.kind.toIr(),
                     astDeclaration.typeParameters,
                     fields,
-                    declarations
+                    declarations,
+                    astDeclaration.sourceLocation
                 )
             }
         }

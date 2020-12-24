@@ -2,11 +2,12 @@ package dev.alox.compiler.ir
 
 import dev.alox.compiler.ast.AstModule
 import dev.alox.compiler.ast.Path
+import dev.alox.compiler.report.SourceLocation
 
 /**
  * IR representation of a module of code
  */
-data class IrModule(val path: Path, val name: String, val declarations: List<Declaration>) {
+data class IrModule(val path: Path, val name: String, val declarations: List<Declaration>, val source: String) {
     sealed class Declaration(open val name: String) {
 
         /**
@@ -23,7 +24,8 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
             val kind: Kind,
             val typeParameters: List<String>,
             val fields: List<Field>,
-            val declarations: List<Declaration>
+            val declarations: List<Declaration>,
+            val sourceLocation: SourceLocation
         ) : Declaration(name) {
             enum class Kind {
                 STRUCT,
@@ -51,7 +53,8 @@ data class IrModule(val path: Path, val name: String, val declarations: List<Dec
             val typeParameters: List<String>,
             val arguments: List<Argument>,
             val blocks: List<Block>,
-            val returnType: DeclarationRef
+            val returnType: DeclarationRef,
+            val sourceLocation: SourceLocation
         ) : Declaration(name) {
             enum class Kind {
                 FUNCTION,
