@@ -61,6 +61,7 @@ class PrettyPrinter(module: IrModule) {
                                     is IrModule.Instruction.FunctionCall -> "call %${insMap[it.function]}(${it.arguments.joinToString { "%${insMap[it]}" }})"
                                     is IrModule.Instruction.MethodCall -> "callMethod %${insMap[it.aggregate]}.${it.methodName}(${it.arguments.joinToString { "%${insMap[it]}" }})"
                                     is IrModule.Instruction.AddressOf -> "&%${insMap[it.value]}"
+                                    is IrModule.Instruction.Branch -> "branch %${insMap[it.condition]} block#${it.trueBlock.id} block#${it.falseBlock.id}"
                                     else -> "$it"
                                 }
                             }"

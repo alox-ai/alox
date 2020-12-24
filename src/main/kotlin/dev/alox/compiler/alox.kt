@@ -8,7 +8,7 @@ import dev.alox.compiler.ir.Translator
 import dev.alox.compiler.parser.AstParser
 
 fun main(args: Array<String>) {
-    val parsedModule = AstParser.parseModule(Path(listOf("alox")), "parsed", """
+    val parseResult = AstParser.parseModule(Path(listOf("alox")), "parsed", """
 struct Box {
     let x : Int32
     let y : Int32
@@ -35,6 +35,21 @@ fun qux(box: Ref[Box]): Int32 {
     return foo(box)
 }
 
+fun quack(box: Ref[Box]): Int32 {
+    if (true) {
+        return box.x
+    }
+    return box.y
+}
+
+fun quack2(box: Ref[Box]): Int32 {
+    if (true) {
+        return box.x
+    } else {
+        return box.y
+    }
+}
+
 actor A {
     let state: Int32
 
@@ -52,6 +67,12 @@ actor B {
     }
 }
     """.trimIndent())
+
+    if (parseResult is Either.Error) {
+        println(parseResult.error.toString())
+        return
+    }
+    val parsedModule = (parseResult as Either.Value).value
 
     val parsedIrModule = Translator(parsedModule).generateModule()
 

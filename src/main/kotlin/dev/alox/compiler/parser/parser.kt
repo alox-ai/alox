@@ -3,15 +3,19 @@ package dev.alox.compiler.parser
 import com.github.h0tk3y.betterParse.combinators.*
 import com.github.h0tk3y.betterParse.grammar.Grammar
 import com.github.h0tk3y.betterParse.grammar.parser
-import com.github.h0tk3y.betterParse.grammar.tryParseToEnd
+import com.github.h0tk3y.betterParse.lexer.TokenMatch
 import com.github.h0tk3y.betterParse.lexer.literalToken
 import com.github.h0tk3y.betterParse.lexer.regexToken
-import com.github.h0tk3y.betterParse.parser.Parser
-import com.github.h0tk3y.betterParse.parser.toParsedOrThrow
+import com.github.h0tk3y.betterParse.parser.*
+import com.github.h0tk3y.betterParse.grammar.tryParseToEnd
+import dev.alox.compiler.Either
 import dev.alox.compiler.ast.AstModule
 import dev.alox.compiler.ast.AstModule.*
 import dev.alox.compiler.ast.AstModule.Expression.*
 import dev.alox.compiler.ast.Path
+import dev.alox.compiler.report.Diagnostic
+import dev.alox.compiler.report.Label
+import dev.alox.compiler.report.SourceLocation
 
 /**
  * The grammar for Alox defined using parser combinators
@@ -256,11 +260,59 @@ object AstParser : Grammar<List<Declaration>>() {
 
     // END PARSING //
 
-    fun parseModule(path: Path, name: String, source: String): AstModule {
-        val parseResult = AstParser.tryParseToEnd(source)
-        // TODO: error reporting
-        val declarations = parseResult.toParsedOrThrow().value
-        return AstModule(path, name, declarations)
+    fun parseModule(path: Path, name: String, source: String): Either<Diagnostic, AstModule> {
+        try {
+            val declarations = AstParser.tryParseToEnd(source).toParsedOrThrow().value
+            val module = AstModule(path, name, declarations)
+            return Either.Value(module)
+        } catch (e: ParseException) {
+            val labels = e.errorResult.toLabel(source)
+            val diagnostic =
+                Diagnostic(Diagnostic.Severity.ERROR, "Failed to parse module $name", labels.toMutableList())
+            return Either.Error(diagnostic)
+        }
     }
 
+}
+
+// helper functions for better-parse
+
+fun TokenMatch.toSourceLocation(): SourceLocation = SourceLocation(row - 1, offset, length)
+
+/**
+ * Turns an ErrorResult to a set of our diagnostic labels
+ */
+fun ErrorResult.toLabel(source: String): List<Label> = when (this) {
+    is MismatchedToken -> listOf(
+        Label(
+            source,
+            found.toSourceLocation(),
+            "Expected to find ${this.expected.name} but found ${this.found.type.name} instead"
+        )
+    )
+    is UnparsedRemainder -> listOf(
+        Label(
+            source,
+            startsWith.toSourceLocation(),
+            "Couldn't parse ${startsWith.type.name}"
+        )
+    )
+    is NoMatchingToken -> listOf(
+        Label(
+            source,
+            tokenMismatch.toSourceLocation(),
+            "Couldn't parse token from this symbol"
+        )
+    )
+    is UnexpectedEof -> listOf(
+        Label(
+            source,
+            SourceLocation(source.lines().size - 1, source.length - 2, 1),
+            "Expected ${expected.name} but reach the end of the file instead"
+        )
+    )
+    is AlternativesFailure -> {
+        errors.flatMap { it.toLabel(source) }
+    }
+    else -> listOf(Label(source, SourceLocation(0, 0, 0), "Unknown error occurred while parsing"))
 }
